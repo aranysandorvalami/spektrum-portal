@@ -1,0 +1,71 @@
+/* Spektrum Managers – admin oldal */
+
+.admin-main { max-width: 1100px; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--text-secondary); text-decoration: none; font-size: 11px; font-weight: 600; }
+.back-link:hover { color: var(--text-primary); }
+
+/* ---------- fülek */
+.tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--border-color); margin-bottom: 14px; }
+.tabs button {
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    padding: 8px 12px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    font: inherit; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+}
+.tabs button:hover { color: var(--text-primary); }
+.tabs button[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
+.tabs .badge:empty, .tabs .badge.zero { display: none; }
+.tabs .badge.hot { color: #0d1117; background: #d29922; border-color: #d29922; }
+
+/* ---------- eszköz szűrő */
+.app-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    background: var(--panel-subtle); border: 1px solid var(--border-color);
+}
+.chip i { color: var(--tone, var(--text-muted)); }
+.chip:hover { color: var(--text-primary); }
+.chip[aria-pressed="true"] { color: var(--text-primary); border-color: var(--accent-blue); background: rgba(56, 139, 253, .12); }
+
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.toolbar .search { flex: 1; min-width: 220px; }
+
+/* ---------- felhasználók */
+.users { display: grid; gap: 8px; }
+.user-card { overflow: hidden; }
+.user-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; flex-wrap: wrap; }
+.user-row .avatar { width: 32px; height: 32px; }
+.user-main { flex: 1; min-width: 180px; }
+.user-main .row-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.user-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.user-detail { border-top: 1px solid var(--border-color); background: var(--panel-subtle); padding: 8px 12px 12px; }
+.perm-table { width: 100%; border-collapse: collapse; }
+.perm-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 6px 8px 6px 0; font-weight: 700; }
+.perm-table td { padding: 8px 8px 8px 0; border-top: 1px solid var(--border-color); vertical-align: top; }
+.perm-app { display: flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
+.perm-app i { color: var(--tone); width: 14px; text-align: center; }
+.ws-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.perm-note { color: var(--text-secondary); padding: 8px 0 2px; }
+@media (max-width: 700px) {
+    .perm-table thead { display: none; }
+    .perm-table tr { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 8px 0; border-top: 1px solid var(--border-color); }
+    .perm-table td { border: 0; padding: 0; }
+    .perm-table td.ws-cell { grid-column: 1 / -1; }
+}
+
+/* ---------- munkaterek */
+.create-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 16px; }
+.create-row .label { margin: 0 6px 0 0; }
+.create-row input { flex: 1; min-width: 180px; width: auto; }
+.app-block { margin-bottom: 16px; }
+.app-block > .panel-head { background: var(--panel-bg); border: 1px solid var(--border-color); border-bottom: 0; border-radius: 6px 6px 0 0; }
+.app-block > .panel-head h3 i { color: var(--tone); }
+.app-block > .list { border-radius: 0 0 6px 6px; }
+
+/* ---------- szerepkörök */
+.role-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); padding: 12px; background: var(--panel-bg); border: 1px solid var(--border-color); border-top: 0; border-radius: 0 0 6px 6px; }
+.role-card { padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--panel-subtle); }
+.role-card .field { margin-bottom: 10px; }
+.role-key { font-size: 10px; color: #d29922; }
+.perm-list { display: grid; gap: 6px; margin: 4px 0 12px; }
+.role-card.new { border-style: dashed; }

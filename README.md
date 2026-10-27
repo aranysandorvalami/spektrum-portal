@@ -7,19 +7,14 @@ Statikus oldal (GitHub Pages), az adatok és a felhasználók Supabase-ben vanna
 
 | Mappa / fájl | Mi ez |
 |---|---|
-| `index.html` | Portál: bejelentkezés, regisztráció, elfelejtett jelszó, az 5 eszköz gombja, jóváhagyás (főadmin) |
-| `concert/`, `budget/`, `library/`, `network/`, `rider/` | Az 5 app (a régi felület, változatlan működéssel) |
-| `shared/config.js` | Supabase URL és publishable kulcs |
+| `index.html`, `portal.css`, `portal.js` | Bejelentkezés, regisztráció, jelszó-visszaállítás és a vezérlőpult |
+| `admin/` | Központi adminisztráció: regisztrációk, csatlakozási kérelmek, felhasználók, munkaterek, szerepkörök |
+| `concert/`, `budget/`, `library/`, `network/`, `rider/` | Az 5 app, mindegyikben `index.html` + `style.css` + `script.js` |
+| `shared/config.js` | Supabase URL és publishable kulcs (nincs a repó csomagban, kézzel kell létrehozni) |
 | `shared/spektrum-api.js` | A régi `/api/...` hívásokat Supabase-hívássá alakítja |
+| `shared/ui.js`, `shared/ui.css` | Közös felület (fejléc, téma, gombok) a portálhoz és az adminhoz |
 | `shared/escape.js` | HTML-escapelés (XSS védelem) |
 | `supabase/schema.sql` | Az adatbázis séma és jogosultságok (RLS) – referenciának |
-
-## Jogosultságok
-
-- Regisztráció után a fiók **jóváhagyásra vár**; a főadmin a portálon hagyja jóvá.
-- Appon belül a Főadmin menüben állítható, ki milyen szerepkörrel (viewer / editor / admin) melyik munkatérhez fér hozzá.
-- Más munkaterére csatlakozási kérelmet lehet küldeni; a munkatér adminja vagy a főadmin bírálja el.
-- Minden jogosultságot az adatbázis (RLS) érvényesít, nem a böngésző.
 
 ## Fontos
 

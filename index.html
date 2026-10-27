@@ -1,413 +1,181 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="hu">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spektrum Managers</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="shared/config.js"></script>
-  <script src="shared/spektrum-api.js"></script>
-  <style>
-    :root {
-      --bg: #e4e7ec;
-      --surface: #f6f7f9;
-      --ink: #1a2030;
-      --muted: #5b6475;
-      --line: #c9ced8;
-      --focus: #2457d6;
-      --danger: #b4232f;
-      --ok: #1d7a4a;
-      /* a spektrum: minden eszköz egy sáv */
-      --s-concert: #d6304a;
-      --s-budget:  #e8891a;
-      --s-library: #c9b200;
-      --s-network: #1f9d6b;
-      --s-rider:   #3b5bdb;
-      --radius-lg: 14px;
-      --radius-sm: 8px;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #171b24; --surface: #212736; --ink: #eef1f6; --muted: #9aa3b5; --line: #343c4f;
-        --focus: #7aa2ff; --danger: #ff6b78; --ok: #4fd18f;
-      }
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; }
-    body {
-      background: var(--bg); color: var(--ink);
-      font-family: "Archivo", system-ui, sans-serif; font-size: 16px; line-height: 1.5;
-      font-variation-settings: "wdth" 100;
-      min-height: 100vh;
-    }
-    .prism {
-      display: grid; grid-template-columns: repeat(5, 1fr); height: 6px;
-    }
-    .prism span:nth-child(1) { background: var(--s-concert); }
-    .prism span:nth-child(2) { background: var(--s-budget); }
-    .prism span:nth-child(3) { background: var(--s-library); }
-    .prism span:nth-child(4) { background: var(--s-network); }
-    .prism span:nth-child(5) { background: var(--s-rider); }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spektrum Managers</title>
 
-    .wrap { max-width: 920px; margin: 0 auto; padding: 40px 16px 64px; }
-    .brand {
-      font-weight: 800; font-variation-settings: "wdth" 70; letter-spacing: -0.01em;
-      font-size: clamp(2.6rem, 9vw, 4.6rem); line-height: 0.92; margin: 0;
-    }
-    .brand small {
-      display: block; font-weight: 500; font-variation-settings: "wdth" 100;
-      font-size: 1.05rem; letter-spacing: 0; color: var(--muted); margin-top: 12px;
-    }
+    <!-- Supabase + közös adatréteg -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="shared/config.js"></script>
+    <script src="shared/spektrum-api.js"></script>
+    <script src="shared/ui.js" data-root="./"></script>
 
-    /* ---------- auth */
-    .auth { display: grid; gap: 40px; grid-template-columns: 1.1fr 1fr; align-items: start; margin-top: 8vh; }
-    @media (max-width: 760px) { .auth { grid-template-columns: 1fr; margin-top: 24px; gap: 28px; } }
-    .panel {
-      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
-      padding: 24px;
-    }
-    .panel h2 { margin: 0 0 4px; font-size: 1.35rem; font-variation-settings: "wdth" 85; font-weight: 700; }
-    .panel p.hint { margin: 0 0 18px; color: var(--muted); font-size: .95rem; }
-    label { display: block; font-size: .9rem; font-weight: 600; margin: 14px 0 6px; }
-    input {
-      width: 100%; font: inherit; color: var(--ink); background: var(--bg);
-      border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 12px;
-    }
-    input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    .btn {
-      font: inherit; font-weight: 700; cursor: pointer; border-radius: var(--radius-sm);
-      padding: 11px 16px; border: 1px solid var(--ink); background: var(--ink); color: var(--surface);
-    }
-    .btn.full { width: 100%; margin-top: 20px; }
-    .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-    .btn.small { padding: 6px 12px; font-size: .9rem; }
-    .btn.okb { background: var(--ok); border-color: var(--ok); color: #fff; }
-    .btn:disabled { opacity: .6; cursor: wait; }
-    .links { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; font-size: .92rem; }
-    .linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--focus); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-    .msg { margin-top: 14px; font-size: .92rem; padding: 10px 12px; border-radius: var(--radius-sm); }
-    .msg.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
-    .msg.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
-    [hidden] { display: none !important; }
-
-    /* ---------- home */
-    .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-    .who { text-align: right; color: var(--muted); font-size: .95rem; }
-    .who strong { color: var(--ink); display: block; font-size: 1.05rem; }
-    .tools { list-style: none; padding: 0; margin: 40px 0 0; display: grid; gap: 12px; }
-    .tool {
-      display: grid; grid-template-columns: 12px 1fr auto; align-items: stretch;
-      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
-      text-decoration: none; color: inherit; overflow: hidden;
-      transition: transform .15s ease, border-color .15s ease;
-    }
-    .tool:hover { transform: translateX(4px); border-color: var(--tone); }
-    .tool .band { background: var(--tone); }
-    .tool .body { padding: 18px 20px; }
-    .tool .name {
-      font-weight: 800; font-variation-settings: "wdth" 75; font-size: clamp(1.5rem, 5vw, 2rem); line-height: 1;
-    }
-    .tool .desc { color: var(--muted); margin-top: 6px; font-size: .97rem; }
-    .tool .go {
-      align-self: center; padding: 0 22px; font-weight: 700; color: var(--tone); white-space: nowrap;
-    }
-    @media (max-width: 520px) { .tool .go { display: none; } }
-
-    .admin { margin-top: 48px; }
-    .admin h2 { font-variation-settings: "wdth" 85; font-size: 1.3rem; margin: 0 0 12px; }
-    .row {
-      display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
-      padding: 12px 0; border-top: 1px solid var(--line);
-    }
-    .row:first-of-type { border-top: 0; }
-    .row .meta { color: var(--muted); font-size: .9rem; }
-    .row .acts { display: flex; gap: 8px; }
-    .empty { color: var(--muted); margin: 0; }
-    footer { margin-top: 56px; color: var(--muted); font-size: .85rem; }
-    @media (prefers-reduced-motion: reduce) { .tool { transition: none; } .tool:hover { transform: none; } }
-  </style>
+    <!-- Font Awesome (ugyanaz, mint az appokban) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="shared/ui.css">
+    <link rel="stylesheet" href="portal.css">
 </head>
 <body>
-  <div class="prism" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
 
-  <main class="wrap">
     <!-- ================= BEJELENTKEZÉS / REGISZTRÁCIÓ ================= -->
-    <section id="authView" hidden>
-      <div class="auth">
-        <div>
-          <h1 class="brand">Spektrum<br>Managers<small>A Spektrum Events belső eszközei egy helyen: koncertek, költségvetés, leltár, hálózat és riderek.</small></h1>
-        </div>
-
-        <div>
-          <form id="loginForm" class="panel" novalidate>
-            <h2>Bejelentkezés</h2>
-            <p class="hint">Egy fiókkal mind az öt eszközt eléred.</p>
-            <label for="loginEmail">E-mail cím</label>
-            <input id="loginEmail" type="email" autocomplete="email" required>
-            <label for="loginPassword">Jelszó</label>
-            <input id="loginPassword" type="password" autocomplete="current-password" required>
-            <button class="btn full" type="submit">Bejelentkezés</button>
-            <div class="links">
-              <button type="button" class="linkbtn" data-show="registerForm">Nincs még fiókom</button>
-              <button type="button" class="linkbtn" data-show="forgotForm">Elfelejtettem a jelszavam</button>
+    <div id="authView" class="auth-screen" hidden>
+        <div class="panel auth-card">
+            <div class="auth-head">
+                <div class="icon-box" style="color: var(--accent-blue)"><i class="fa-solid fa-layer-group"></i></div>
+                <div>
+                    <h1>Spektrum Managers</h1>
+                    <p class="mono" id="authSubtitle">Belépés az 5 eszközhöz</p>
+                </div>
             </div>
-            <div class="msg" role="status" hidden></div>
-          </form>
 
-          <form id="registerForm" class="panel" novalidate hidden>
-            <h2>Regisztráció</h2>
-            <p class="hint">A fiókod a főadminisztrátor jóváhagyása után lesz aktív.</p>
-            <label for="regUsername">Felhasználónév</label>
-            <input id="regUsername" autocomplete="username" required minlength="2" maxlength="60">
-            <label for="regDisplay">Teljes név</label>
-            <input id="regDisplay" autocomplete="name">
-            <label for="regEmail">E-mail cím</label>
-            <input id="regEmail" type="email" autocomplete="email" required>
-            <label for="regPassword">Jelszó (legalább 8 karakter)</label>
-            <input id="regPassword" type="password" autocomplete="new-password" required minlength="8">
-            <button class="btn full" type="submit">Regisztrálok</button>
-            <div class="links"><button type="button" class="linkbtn" data-show="loginForm">Már van fiókom</button></div>
-            <div class="msg" role="status" hidden></div>
-          </form>
+            <!-- Belépés -->
+            <form id="loginForm" novalidate>
+                <div class="field">
+                    <label class="label" for="loginEmail">E-mail cím</label>
+                    <input class="form-control mono" id="loginEmail" type="email" autocomplete="email" placeholder="pl. info@spektrumevents.hu" required>
+                </div>
+                <div class="field">
+                    <div class="field-row">
+                        <label class="label" for="loginPassword">Jelszó</label>
+                        <button type="button" class="link" data-show="forgotForm">Elfelejtetted?</button>
+                    </div>
+                    <div class="pw-wrap">
+                        <input class="form-control" id="loginPassword" type="password" autocomplete="current-password" required>
+                        <button type="button" class="pw-toggle" data-toggle-pw="loginPassword" aria-label="Jelszó mutatása"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit">Belépés a rendszerbe</button>
+                <p class="msg" role="status" hidden></p>
+                <div class="auth-foot">
+                    <button type="button" class="link link-muted" data-show="registerForm">Új fiók igénylése</button>
+                </div>
+            </form>
 
-          <form id="forgotForm" class="panel" novalidate hidden>
-            <h2>Új jelszó kérése</h2>
-            <p class="hint">Küldünk egy linket, amivel új jelszót állíthatsz be.</p>
-            <label for="forgotEmail">E-mail cím</label>
-            <input id="forgotEmail" type="email" autocomplete="email" required>
-            <button class="btn full" type="submit">Link küldése</button>
-            <div class="links"><button type="button" class="linkbtn" data-show="loginForm">Vissza a bejelentkezéshez</button></div>
-            <div class="msg" role="status" hidden></div>
-          </form>
+            <!-- Regisztráció -->
+            <form id="registerForm" novalidate hidden>
+                <p class="auth-note">A fiókod a Főadminisztrátor jóváhagyása után lesz aktív.</p>
+                <div class="field">
+                    <label class="label" for="regDisplay">Teljes név</label>
+                    <input class="form-control" id="regDisplay" autocomplete="name" placeholder="pl. Kovács Béla" required>
+                </div>
+                <div class="field">
+                    <label class="label" for="regEmail">E-mail cím</label>
+                    <input class="form-control mono" id="regEmail" type="email" autocomplete="email" placeholder="pl. bela@spektrumevents.hu" required>
+                </div>
+                <div class="field">
+                    <label class="label" for="regUsername">Felhasználónév</label>
+                    <input class="form-control mono" id="regUsername" autocomplete="username" placeholder="pl. bkovacs" required minlength="2" maxlength="60">
+                </div>
+                <div class="field">
+                    <label class="label" for="regPassword">Jelszó (legalább 8 karakter)</label>
+                    <div class="pw-wrap">
+                        <input class="form-control" id="regPassword" type="password" autocomplete="new-password" required minlength="8">
+                        <button type="button" class="pw-toggle" data-toggle-pw="regPassword" aria-label="Jelszó mutatása"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit">Hozzáférés igénylése</button>
+                <p class="msg" role="status" hidden></p>
+                <div class="auth-foot">
+                    <button type="button" class="link link-muted" data-show="loginForm">Vissza a belépéshez</button>
+                </div>
+            </form>
 
-          <form id="resetForm" class="panel" novalidate hidden>
-            <h2>Új jelszó beállítása</h2>
-            <p class="hint">Add meg az új jelszavad kétszer.</p>
-            <label for="resetPw1">Új jelszó (legalább 8 karakter)</label>
-            <input id="resetPw1" type="password" autocomplete="new-password" required minlength="8">
-            <label for="resetPw2">Új jelszó még egyszer</label>
-            <input id="resetPw2" type="password" autocomplete="new-password" required minlength="8">
-            <button class="btn full" type="submit">Jelszó mentése</button>
-            <div class="msg" role="status" hidden></div>
-          </form>
+            <!-- Elfelejtett jelszó -->
+            <form id="forgotForm" novalidate hidden>
+                <p class="auth-note">Küldünk egy linket, amivel új jelszót állíthatsz be.</p>
+                <div class="field">
+                    <label class="label" for="forgotEmail">E-mail cím</label>
+                    <input class="form-control mono" id="forgotEmail" type="email" autocomplete="email" required>
+                </div>
+                <button class="btn btn-primary btn-block" type="submit">Link küldése</button>
+                <p class="msg" role="status" hidden></p>
+                <div class="auth-foot">
+                    <button type="button" class="link link-muted" data-show="loginForm">Vissza a belépéshez</button>
+                </div>
+            </form>
+
+            <!-- Új jelszó (a levélben kapott linkről) -->
+            <form id="resetForm" novalidate hidden>
+                <p class="auth-note">Add meg az új jelszavad kétszer.</p>
+                <div class="field">
+                    <label class="label" for="resetPw1">Új jelszó (legalább 8 karakter)</label>
+                    <input class="form-control" id="resetPw1" type="password" autocomplete="new-password" required minlength="8">
+                </div>
+                <div class="field">
+                    <label class="label" for="resetPw2">Új jelszó még egyszer</label>
+                    <input class="form-control" id="resetPw2" type="password" autocomplete="new-password" required minlength="8">
+                </div>
+                <button class="btn btn-primary btn-block" type="submit">Jelszó mentése</button>
+                <p class="msg" role="status" hidden></p>
+            </form>
+
+            <div class="app-strip" aria-hidden="true">
+                <i class="fa-solid fa-guitar"></i><i class="fa-solid fa-calculator"></i><i class="fa-solid fa-boxes-stacked"></i><i class="fa-solid fa-server"></i><i class="fa-solid fa-bolt"></i>
+            </div>
         </div>
-      </div>
-    </section>
+    </div>
 
     <!-- ================= JÓVÁHAGYÁSRA VÁR ================= -->
-    <section id="pendingView" hidden>
-      <h1 class="brand">Spektrum<br>Managers</h1>
-      <div class="panel" style="margin-top:32px;max-width:560px">
-        <h2 id="pendingTitle">A fiókod jóváhagyásra vár</h2>
-        <p class="hint" id="pendingText">Amint a főadminisztrátor jóváhagyja, itt megjelennek az eszközök. Nézz vissza később, vagy szólj neki.</p>
-        <button class="btn ghost" type="button" data-action="logout">Kijelentkezés</button>
-      </div>
-    </section>
-
-    <!-- ================= FŐOLDAL ================= -->
-    <section id="homeView" hidden>
-      <div class="top">
-        <h1 class="brand">Spektrum<br>Managers</h1>
-        <div class="who">
-          <strong id="whoName"></strong>
-          <span id="whoRole"></span><br>
-          <button class="linkbtn" type="button" data-action="logout">Kijelentkezés</button>
+    <div id="pendingView" class="auth-screen" hidden>
+        <div class="panel pending-card">
+            <div class="auth-head">
+                <div class="icon-box" style="color: #f59e0b"><i class="fa-solid fa-hourglass-half"></i></div>
+                <div>
+                    <h1>Spektrum Managers</h1>
+                    <p class="mono">Fiók állapota</p>
+                </div>
+            </div>
+            <h2 id="pendingTitle">A fiókod jóváhagyásra vár</h2>
+            <p id="pendingText">Amint a Főadminisztrátor jóváhagyja, itt megjelennek az eszközök.</p>
+            <button class="btn btn-ghost" type="button" data-action="logout"><i class="fa-solid fa-right-from-bracket"></i> Kijelentkezés</button>
         </div>
-      </div>
+    </div>
 
-      <ul class="tools" id="toolList"></ul>
+    <!-- ================= FŐOLDAL (VEZÉRLŐPULT) ================= -->
+    <div id="homeView" hidden>
+        <div id="topbar"></div>
 
-      <section class="admin" id="adminSection" hidden>
-        <h2>Jóváhagyásra váró regisztrációk</h2>
-        <div class="panel" id="pendingList"></div>
-        <p class="hint" style="color:var(--muted);margin-top:10px;font-size:.92rem">
-          Jóváhagyás után az egyes eszközökben (Főadmin menü) állíthatod be, ki melyik munkatérhez fér hozzá és milyen szerepkörrel.
-        </p>
-      </section>
+        <main class="main dash">
+            <div class="page-head">
+                <div>
+                    <h2 id="greeting">Szia!</h2>
+                    <p id="today"></p>
+                </div>
+            </div>
 
-      <footer>Spektrum Events</footer>
-    </section>
-  </main>
+            <a class="alert" id="adminAlert" href="admin/index.html" hidden>
+                <i class="fa-solid fa-bell"></i>
+                <span class="grow" id="adminAlertText"></span>
+                <i class="fa-solid fa-chevron-right"></i>
+            </a>
 
-  <script>
-  (function () {
-    "use strict";
-    const sb = window.spektrumSb;
-    const params = new URLSearchParams(location.search);
-    let recoveryMode = /type=recovery/.test(location.hash);
+            <div class="dash-grid">
+                <section aria-labelledby="toolsTitle">
+                    <h2 class="section-title" id="toolsTitle">Eszközök</h2>
+                    <ul class="tools" id="toolList"></ul>
+                </section>
 
-    const TOOLS = [
-      { key: "concert", name: "Concert Manager", desc: "Koncertek, helyszínek, időpontok és teendők", tone: "var(--s-concert)" },
-      { key: "budget",  name: "Budget Manager",  desc: "Költségvetés, útiköltség és csomaglista",     tone: "var(--s-budget)" },
-      { key: "library", name: "Library Manager", desc: "Leltár, rackek és eszközök vonalkóddal",       tone: "var(--s-library)" },
-      { key: "network", name: "Network Manager", desc: "IP-blokkok és hálózati eszközök",             tone: "var(--s-network)" },
-      { key: "rider",   name: "Rider Manager",   desc: "Technikai riderek és stage plotok",           tone: "var(--s-rider)" }
-    ];
+                <aside class="dash-side">
+                    <section class="panel">
+                        <div class="panel-head">
+                            <h3><i class="fa-solid fa-guitar" style="color: var(--tone-concert)"></i> Következő koncertek</h3>
+                            <a class="link" href="concert/index.html">Mind</a>
+                        </div>
+                        <div class="panel-body" id="upcomingList"><p class="empty">Betöltés...</p></div>
+                    </section>
 
-    const $ = (id) => document.getElementById(id);
-    const views = ["authView", "pendingView", "homeView"];
-    function show(view) { views.forEach(v => $(v).hidden = v !== view); }
-    function showForm(id) {
-      ["loginForm", "registerForm", "forgotForm", "resetForm"].forEach(f => $(f).hidden = f !== id);
-      const first = $(id).querySelector("input"); if (first) first.focus();
-    }
-    function msg(form, text, kind) {
-      const el = form.querySelector(".msg");
-      el.textContent = text; el.className = "msg " + (kind || "err"); el.hidden = !text;
-    }
-    function busy(form, on) { form.querySelector("button[type=submit]").disabled = on; }
-    function el(tag, attrs, text) {
-      const n = document.createElement(tag);
-      Object.entries(attrs || {}).forEach(([k, v]) => k === "style" ? n.setAttribute("style", v) : (n[k] = v));
-      if (text != null) n.textContent = text;
-      return n;
-    }
-    const portalUrl = location.origin + location.pathname;
+                    <section class="panel">
+                        <div class="panel-head">
+                            <h3><i class="fa-solid fa-clock-rotate-left"></i> Legutóbbi módosítások</h3>
+                        </div>
+                        <div class="panel-body" id="recentList"><p class="empty">Betöltés...</p></div>
+                    </section>
+                </aside>
+            </div>
+        </main>
+    </div>
 
-    function translateAuthError(e) {
-      const m = (e && e.message) || "";
-      if (/Invalid login credentials/i.test(m)) return "Hibás e-mail cím vagy jelszó.";
-      if (/Email not confirmed/i.test(m)) return "Az e-mail címed még nincs megerősítve. Nézd meg a postafiókod (a spam mappát is).";
-      if (/already registered/i.test(m)) return "Ezzel az e-mail címmel már van fiók. Jelentkezz be, vagy kérj új jelszót.";
-      if (/Password should be/i.test(m)) return "A jelszó túl rövid vagy túl egyszerű (legalább 8 karakter).";
-      if (/rate limit/i.test(m)) return "Túl sok próbálkozás. Várj pár percet, és próbáld újra.";
-      return m || "Ismeretlen hiba történt.";
-    }
-
-    document.querySelectorAll("[data-show]").forEach(b => b.addEventListener("click", () => showForm(b.dataset.show)));
-    document.querySelectorAll("[data-action=logout]").forEach(b => b.addEventListener("click", async () => {
-      await sb.auth.signOut(); show("authView"); showForm("loginForm");
-    }));
-
-    // ---------- bejelentkezés
-    $("loginForm").addEventListener("submit", async (e) => {
-      e.preventDefault(); const f = e.target; msg(f, ""); busy(f, true);
-      const { error } = await sb.auth.signInWithPassword({ email: $("loginEmail").value.trim(), password: $("loginPassword").value });
-      busy(f, false);
-      if (error) return msg(f, translateAuthError(error));
-      route();
-    });
-
-    // ---------- regisztráció
-    $("registerForm").addEventListener("submit", async (e) => {
-      e.preventDefault(); const f = e.target; msg(f, "");
-      const username = $("regUsername").value.trim();
-      if (username.length < 2) return msg(f, "A felhasználónév legalább 2 karakter legyen.");
-      if ($("regPassword").value.length < 8) return msg(f, "A jelszó legalább 8 karakter legyen.");
-      busy(f, true);
-      const { data, error } = await sb.auth.signUp({
-        email: $("regEmail").value.trim(),
-        password: $("regPassword").value,
-        options: { emailRedirectTo: portalUrl, data: { username, display_name: $("regDisplay").value.trim() } }
-      });
-      busy(f, false);
-      if (error) return msg(f, translateAuthError(error));
-      if (data.session) return route();
-      msg(f, "Elküldtük a megerősítő levelet. Kattints a benne lévő linkre, utána a főadminisztrátor jóváhagyja a fiókod.", "ok");
-      f.reset();
-    });
-
-    // ---------- elfelejtett jelszó
-    $("forgotForm").addEventListener("submit", async (e) => {
-      e.preventDefault(); const f = e.target; msg(f, ""); busy(f, true);
-      const { error } = await sb.auth.resetPasswordForEmail($("forgotEmail").value.trim(), { redirectTo: portalUrl });
-      busy(f, false);
-      if (error) return msg(f, translateAuthError(error));
-      msg(f, "Ha van fiók ezzel a címmel, elküldtük a linket. Nézd meg a postafiókod.", "ok");
-    });
-
-    // ---------- új jelszó (a levélben kapott linkről)
-    $("resetForm").addEventListener("submit", async (e) => {
-      e.preventDefault(); const f = e.target; msg(f, "");
-      const p1 = $("resetPw1").value, p2 = $("resetPw2").value;
-      if (p1.length < 8) return msg(f, "A jelszó legalább 8 karakter legyen.");
-      if (p1 !== p2) return msg(f, "A két jelszó nem egyezik.");
-      busy(f, true);
-      const { error } = await sb.auth.updateUser({ password: p1 });
-      busy(f, false);
-      if (error) return msg(f, translateAuthError(error));
-      history.replaceState(null, "", portalUrl);
-      recoveryMode = false;
-      route();
-    });
-
-    sb.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") { recoveryMode = true; show("authView"); showForm("resetForm"); }
-    });
-
-    // ---------- főoldal
-    function renderTools() {
-      const list = $("toolList"); list.replaceChildren();
-      TOOLS.forEach(t => {
-        const li = el("li");
-        const a = el("a", { className: "tool", href: t.key + "/index.html" });
-        a.style.setProperty("--tone", t.tone);
-        a.append(el("span", { className: "band" }));
-        const body = el("span", { className: "body" });
-        body.append(el("span", { className: "name" }, t.name), el("span", { className: "desc", style: "display:block" }, t.desc));
-        a.append(body, el("span", { className: "go" }, "Megnyitás"));
-        li.append(a); list.append(li);
-      });
-    }
-
-    async function renderPending() {
-      const box = $("pendingList"); box.replaceChildren();
-      const { data, error } = await sb.from("profiles").select("id, username, display_name, email, created_at")
-        .eq("status", "pending").order("created_at");
-      if (error) { box.append(el("p", { className: "empty" }, "Nem sikerült betölteni: " + error.message)); return; }
-      if (!data.length) { box.append(el("p", { className: "empty" }, "Nincs jóváhagyásra váró regisztráció.")); return; }
-      data.forEach(u => {
-        const row = el("div", { className: "row" });
-        const info = el("div");
-        info.append(el("strong", {}, u.display_name || u.username),
-                    el("div", { className: "meta" }, u.username + ", " + (u.email || "nincs e-mail")));
-        const acts = el("div", { className: "acts" });
-        const yes = el("button", { className: "btn small okb", type: "button" }, "Jóváhagyás");
-        const no = el("button", { className: "btn small ghost", type: "button" }, "Elutasítás");
-        yes.addEventListener("click", () => decide(u.id, "approved"));
-        no.addEventListener("click", () => { if (confirm("Biztosan elutasítod " + (u.display_name || u.username) + " regisztrációját?")) decide(u.id, "disabled"); });
-        acts.append(yes, no); row.append(info, acts); box.append(row);
-      });
-    }
-    async function decide(id, status) {
-      const { error } = await sb.from("profiles").update({ status }).eq("id", id);
-      if (error) alert("Nem sikerült: " + error.message);
-      renderPending();
-    }
-
-    async function route() {
-      if (recoveryMode) { show("authView"); showForm("resetForm"); return; }
-      const { data } = await sb.auth.getSession();
-      if (!data.session) { show("authView"); if ($("resetForm").hidden) showForm(location.hash === "#register" ? "registerForm" : location.hash === "#forgot" ? "forgotForm" : "loginForm"); return; }
-
-      const { data: p } = await sb.from("profiles").select("*").eq("id", data.session.user.id).maybeSingle();
-      if (!p || p.status !== "approved") {
-        $("pendingTitle").textContent = p && p.status === "disabled" ? "A fiókod le van tiltva" : "A fiókod jóváhagyásra vár";
-        $("pendingText").textContent = p && p.status === "disabled"
-          ? "Ha szerinted ez tévedés, keresd a főadminisztrátort."
-          : "Amint a főadminisztrátor jóváhagyja, itt megjelennek az eszközök. Nézz vissza később, vagy szólj neki.";
-        show("pendingView"); return;
-      }
-
-      const next = params.get("next");
-      if (next && TOOLS.some(t => t.key === next)) { location.replace(next + "/index.html"); return; }
-
-      $("whoName").textContent = p.display_name || p.username;
-      $("whoRole").textContent = p.is_superadmin ? "Főadminisztrátor" : p.username;
-      renderTools();
-      $("adminSection").hidden = !p.is_superadmin;
-      if (p.is_superadmin) renderPending();
-      show("homeView");
-    }
-
-    if (!window.SPEKTRUM_CONFIG || /IDE_JON/.test(window.SPEKTRUM_CONFIG.supabaseKey)) {
-      document.body.insertAdjacentHTML("afterbegin", '<p style="background:#b4232f;color:#fff;margin:0;padding:10px 16px">Hiányzik a Supabase kulcs a shared/config.js fájlból.</p>');
-    }
-    route();
-  })();
-  </script>
+    <script src="portal.js"></script>
 </body>
 </html>

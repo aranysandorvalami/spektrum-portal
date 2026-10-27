@@ -1,0 +1,49 @@
+/* Spektrum Managers – főoldal (vezérlőpult) */
+
+.main.dash { max-width: 1180px; }
+
+.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .dash-grid { grid-template-columns: 1fr; } }
+.dash-side { display: grid; gap: 16px; }
+
+/* ---------- eszköz kártyák */
+.tools { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.tool {
+    display: flex; flex-direction: column; gap: 12px; height: 100%;
+    padding: 14px; text-decoration: none; color: inherit;
+    background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px;
+    border-top: 3px solid var(--tone);
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.tool:hover { background: var(--panel-hover); border-color: var(--border-light); border-top-color: var(--tone); }
+.tool-top { display: flex; align-items: center; gap: 12px; }
+.tool .icon-box { color: var(--tone); }
+.tool-body { flex: 1; min-width: 0; }
+.tool-name { font-size: 13px; font-weight: 700; }
+.tool-desc { font-size: 11px; color: var(--text-secondary); }
+.tool .chev { color: var(--text-muted); }
+.tool:hover .chev { color: var(--text-primary); }
+
+.tool-stats { display: flex; gap: 8px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color); }
+.stat { flex: 1; min-width: 0; }
+.stat b { display: block; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat span { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+.tool-none { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted); }
+
+/* ---------- oldalsó listák */
+.item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-color); text-decoration: none; color: inherit; }
+.item:first-child { border-top: 0; }
+a.item:hover .item-title { color: var(--accent-blue-hover); }
+.date-chip {
+    flex: none; width: 44px; padding: 3px 0; border-radius: 4px; text-align: center; line-height: 1.15;
+    background: var(--panel-subtle); border: 1px solid var(--border-color);
+}
+.date-chip b { display: block; font-size: 15px; }
+.date-chip span { font-size: 9px; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; }
+.item-body { flex: 1; min-width: 0; }
+.item-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-meta { font-size: 11px; color: var(--text-secondary); }
+.item-icon { flex: none; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: var(--panel-subtle); border: 1px solid var(--border-color); color: var(--tone); font-size: 11px; }
+
+/* hosszú szövegek ne nyújtsák szét a rácsot */
+.dash-grid > *, .dash-side > *, .item-body { min-width: 0; }

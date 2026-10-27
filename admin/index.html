@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin – Spektrum Managers</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/config.js"></script>
+    <script src="../shared/spektrum-api.js"></script>
+    <script src="../shared/ui.js" data-root="../"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../shared/ui.css">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div id="topbar"></div>
+
+    <main class="main admin-main" id="adminMain" hidden>
+        <div class="page-head">
+            <div>
+                <a class="back-link" href="../index.html"><i class="fa-solid fa-arrow-left"></i> Vezérlőpult</a>
+                <h2>Adminisztráció</h2>
+                <p id="adminSubtitle">Felhasználók, jogosultságok és munkaterek mind az 5 eszközhöz.</p>
+            </div>
+            <button class="btn btn-ghost" type="button" id="reloadBtn"><i class="fa-solid fa-rotate"></i> Frissítés</button>
+        </div>
+
+        <nav class="tabs" role="tablist" aria-label="Admin részek">
+            <button role="tab" type="button" data-tab="registrations" data-super><i class="fa-solid fa-user-clock"></i> Regisztrációk <span class="badge" id="countRegistrations">0</span></button>
+            <button role="tab" type="button" data-tab="requests"><i class="fa-solid fa-key"></i> Csatlakozási kérelmek <span class="badge" id="countRequests">0</span></button>
+            <button role="tab" type="button" data-tab="users" data-super><i class="fa-solid fa-users"></i> Felhasználók</button>
+            <button role="tab" type="button" data-tab="workspaces" data-super><i class="fa-solid fa-database"></i> Munkaterek</button>
+            <button role="tab" type="button" data-tab="roles" data-super><i class="fa-solid fa-user-shield"></i> Szerepkörök</button>
+        </nav>
+
+        <div class="app-filter" id="appFilter" role="group" aria-label="Eszköz szűrő"></div>
+
+        <!-- Regisztrációk -->
+        <section class="tab-panel" data-panel="registrations" hidden>
+            <div class="panel list" id="registrationsList"></div>
+            <p class="hint">Jóváhagyás után a Felhasználók fülön állíthatod be, ki melyik eszközben milyen szerepkörrel és melyik munkaterekhez fér hozzá.</p>
+        </section>
+
+        <!-- Kérelmek -->
+        <section class="tab-panel" data-panel="requests" hidden>
+            <div class="panel list" id="requestsList"></div>
+            <p class="hint">Csatlakozási kérelmet az eszközökön belül lehet leadni egy munkatérre (pl. egy turnéra vagy raktárra).</p>
+        </section>
+
+        <!-- Felhasználók -->
+        <section class="tab-panel" data-panel="users" hidden>
+            <div class="toolbar">
+                <input class="form-control search" id="userSearch" type="search" placeholder="Keresés név, felhasználónév vagy e-mail alapján" aria-label="Felhasználó keresése">
+                <label class="check"><input type="checkbox" id="showDisabled"> Letiltottak is</label>
+            </div>
+            <div class="users" id="usersList"></div>
+        </section>
+
+        <!-- Munkaterek -->
+        <section class="tab-panel" data-panel="workspaces" hidden>
+            <form class="panel create-row" id="createWsForm">
+                <label class="label" for="newWsApp">Új munkatér</label>
+                <select class="form-control select" id="newWsApp" aria-label="Eszköz"></select>
+                <input class="form-control" id="newWsName" placeholder="Név, pl. Turné 2027" required maxlength="60">
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Létrehozás</button>
+            </form>
+            <div id="workspacesList"></div>
+        </section>
+
+        <!-- Szerepkörök -->
+        <section class="tab-panel" data-panel="roles" hidden>
+            <div id="rolesList"></div>
+        </section>
+    </main>
+
+    <div class="auth-screen" id="noAccess" hidden>
+        <div class="panel pending-card">
+            <h2>Nincs admin jogosultságod</h2>
+            <p>Ezt az oldalt a Főadminisztrátor és a munkaterek adminjai érik el.</p>
+            <a class="btn btn-ghost" href="../index.html"><i class="fa-solid fa-arrow-left"></i> Vissza a vezérlőpultra</a>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

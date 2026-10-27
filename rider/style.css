@@ -1,0 +1,102 @@
+:root {
+    --app-bg: #090c10;
+    --panel-bg: #0d1117;
+    --panel-subtle: #161b22;
+    --panel-hover: #1c2128;
+    --border-color: #30363d;
+    --border-light: #484f58;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #6e7681;
+    --input-bg: #010409;
+    --input-border: #30363d;
+    --accent-blue: #1f6feb;
+    --accent-blue-hover: #388bfd;
+    --sidebar-width: 270px;
+}
+
+body.theme-light {
+    --app-bg: #f6f8fa;
+    --panel-bg: #ffffff;
+    --panel-subtle: #f3f4f6;
+    --panel-hover: #eaeef2;
+    --border-color: #d0d7de;
+    --border-light: #afb8c1;
+    --text-primary: #1f2328;
+    --text-secondary: #57606a;
+    --text-muted: #8c959f;
+    --input-bg: #ffffff;
+    --input-border: #d0d7de;
+    --accent-blue: #0969da;
+    --accent-blue-hover: #0860ca;
+}
+
+body { 
+    background-color: var(--app-bg); 
+    color: var(--text-primary); 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+.custom-scroll::-webkit-scrollbar-track { background: transparent; }
+.custom-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+.ui-panel { background-color: var(--panel-bg); border-color: var(--border-color); }
+.ui-subtle { background-color: var(--panel-subtle); border-color: var(--border-color); }
+
+.form-control {
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
+.stage-item { cursor: grab; user-select: none; }
+.stage-item:active { cursor: grabbing; }
+
+#mainSidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    max-width: var(--sidebar-width);
+    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+@media (min-width: 768px) {
+    #mainSidebar.sidebar-collapsed {
+        margin-left: calc(-1 * var(--sidebar-width)) !important;
+        border-right-width: 0px !important;
+        pointer-events: none;
+        opacity: 0;
+    }
+}
+
+@media (max-width: 767px) {
+    #mainSidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        transform: translateX(-100%);
+        box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+        z-index: 50;
+    }
+    #mainSidebar.sidebar-mobile-open {
+        transform: translateX(0);
+    }
+}
+
+@media print {
+    header, .no-print, #loginScreen, #userAdminModal, #exportPdfModal, #requestDbModal, #settingsModal, #profileModal, #copyPlotModal, .tab-btn-bar, aside, .toolbar-header { display: none !important; }
+    body { background: white !important; color: black !important; padding: 0 !important; }
+    .print-section { display: block !important; page-break-after: always; color: black !important; }
+    input, textarea, select { border: none !important; background: transparent !important; color: black !important; appearance: none; }
+    #stageCanvas, #lightingCanvas { border: 2px solid black !important; background: #fff !important; }
+    .stage-item { background: #eee !important; border: 1px solid black !important; color: black !important; }
+}

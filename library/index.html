@@ -6,8 +6,7 @@
     <!-- Spektrum: közös bejelentkezés és Supabase adatréteg -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="../shared/config.js"></script>
-    <script>window.SPEKTRUM_APP = "library";</script>
-    <script src="../shared/spektrum-api.js"></script>
+    <script src="../shared/spektrum-api.js" data-app="library"></script>
     <script src="../shared/escape.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Library Manager Spektrumevents</title>
@@ -257,11 +256,11 @@
                 <div class="p-3 border-t border-[var(--border-color)] space-y-1 mt-auto">
                     <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-2">Vezérlőközpont</div>
                     
-                    <button id="superAdminBtn" onclick="openUserAdminModal()" class="w-full text-left px-2.5 py-1.5 rounded text-amber-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
+                    <button id="superAdminBtn" onclick="location.href='../admin/index.html?app=library'" class="w-full text-left px-2.5 py-1.5 rounded text-amber-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
                         <i class="fa-solid fa-shield-halved w-3.5"></i> <span>Rendszer Adminisztráció</span>
                     </button>
 
-                    <button id="dbAdminBtn" onclick="openDbAdminModal()" class="w-full text-left px-2.5 py-1.5 rounded text-blue-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
+                    <button id="dbAdminBtn" onclick="location.href='../admin/index.html?app=library&amp;tab=requests'" class="w-full text-left px-2.5 py-1.5 rounded text-blue-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
                         <i class="fa-solid fa-database w-3.5"></i> <span>Adatbázis Felügyelet</span>
                     </button>
 
@@ -284,6 +283,9 @@
             <!-- TOOLBAR -->
             <div class="h-12 border-b border-[var(--border-color)] px-4 ui-panel flex items-center justify-between gap-3 flex-shrink-0">
                 <div class="flex items-center gap-3 flex-1 max-w-xl">
+                    <a href="../index.html" class="flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--border-color)] ui-subtle text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] font-semibold whitespace-nowrap" title="Vissza a Spektrum Managers vezérlőpultra">
+                        <i class="fa-solid fa-arrow-left"></i><span class="hidden sm:inline">Vezérlőpult</span>
+                    </a>
                     <button onclick="toggleSidebar()" class="p-1.5 rounded hover:bg-[var(--panel-hover)] text-[var(--text-primary)] focus:outline-none" title="Oldalsáv összecsukása / kinyitása">
                         <i class="fa-solid fa-bars text-sm"></i>
                     </button>
