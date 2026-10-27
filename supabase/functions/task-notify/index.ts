@@ -204,7 +204,8 @@ function renderTaskEmail(o) {
     (o.portalUrl ? `\n\nMegnyitás: ${o.portalUrl}concert/index.html` : "") +
     `\n\n--\nSpektrum Events${o.company.email ? `\n${o.company.email}` : ""}${o.company.phone ? `\n${o.company.phone}` : ""}`;
 
-  return { subject, html, text };
+  // Egy sorba tömörítve: a denomailer a sortöréseket/behúzásokat hibásan kódolja („=20” jelenik meg a levélben)
+  return { subject, html: html.replace(/\s*\n\s*/g, " "), text };
 }
 // ===================================================================== LEVÉLSABLON VÉGE
 
