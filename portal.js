@@ -305,7 +305,8 @@
         }
 
         const next = params.get("next");
-        if (next && toolByKey[next]) { location.replace(next + "/index.html"); return; }
+        const q = params.get("q") || "";
+        if (next && toolByKey[next]) { location.replace(next + "/index.html" + (q.startsWith("?") ? q : "")); return; }
         if (next === "admin") { location.replace("admin/index.html"); return; }
 
         renderHome(p);

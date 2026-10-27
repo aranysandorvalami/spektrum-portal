@@ -81,7 +81,7 @@ function emailFooter(company) {
     </td></tr>`;
 }
 
-// o: { name, assigner, concert, wsTitle, tasks, portalUrl, company, todayIso }
+// o: { name, assigner, concert, wsName, wsTitle, tasks, portalUrl, company, todayIso }
 function renderTaskEmail(o) {
   const c = o.concert;
   const place = [c.city, c.venue].filter(Boolean).join(" • ");
@@ -95,8 +95,8 @@ function renderTaskEmail(o) {
 
   const taskRows = o.tasks.map((t, i) => `
     <tr>
-      <td style="padding:14px 16px;${i ? `border-top:1px solid ${C.border};` : ""}vertical-align:top;width:22px">
-        <div style="width:14px;height:14px;border:1.5px solid ${C.borderLight};border-radius:3px;margin-top:2px"></div>
+      <td style="padding:13px 10px 13px 16px;${i ? `border-top:1px solid ${C.border};` : ""}vertical-align:top;width:22px">
+        <div style="width:22px;height:22px;line-height:22px;border-radius:11px;background:${C.subtle};border:1px solid ${C.borderLight};text-align:center;font-family:${MONO};font-size:11px;font-weight:700;color:${C.amber}">${i + 1}</div>
       </td>
       <td style="padding:14px 8px 14px 0;${i ? `border-top:1px solid ${C.border};` : ""}vertical-align:top;font-size:14px;font-weight:600;color:${C.text};line-height:1.45">
         ${esc(t.text)}
@@ -110,7 +110,7 @@ function renderTaskEmail(o) {
     <tr><td style="padding:8px 24px 4px">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
         <td bgcolor="${C.blue}" style="border-radius:6px">
-          <a href="${esc(o.portalUrl)}concert/index.html" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px">Megnyitás a Concert Managerben &rarr;</a>
+          <a href="${esc(o.portalUrl)}concert/index.html?db=${encodeURIComponent(o.wsName)}&amp;concert=${encodeURIComponent(c.id)}" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px">Megnyitás a Concert Managerben &rarr;</a>
         </td>
       </tr></table>
     </td></tr>` : "";
@@ -201,7 +201,7 @@ function renderTaskEmail(o) {
   const text = `Szia ${o.name}!\n\n${o.assigner} feladatot osztott rád.\n\n` +
     `${c.title || "Koncert"}${c.concert_date ? ` – ${huDate(c.concert_date)}` : ""}${place ? ` – ${place}` : ""}\n\n` +
     o.tasks.map((t) => `- ${t.text}${t.due_date ? ` (határidő: ${huDate(t.due_date)})` : ""}`).join("\n") +
-    (o.portalUrl ? `\n\nMegnyitás: ${o.portalUrl}concert/index.html` : "") +
+    (o.portalUrl ? `\n\nMegnyitás: ${o.portalUrl}concert/index.html?db=${encodeURIComponent(o.wsName)}&concert=${encodeURIComponent(c.id)}` : "") +
     `\n\n--\nSpektrum Events${o.company.email ? `\n${o.company.email}` : ""}${o.company.phone ? `\n${o.company.phone}` : ""}`;
 
   // Egy sorba tömörítve: a denomailer a sortöréseket/behúzásokat hibásan kódolja („=20” jelenik meg a levélben)
@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
       const mail = renderTaskEmail({
         name: p.display_name || p.username,
         assigner: me ? (me.display_name || me.username) : "Valaki",
-        concert, wsTitle: ws.title || body.workspace,
+        concert, wsName: body.workspace, wsTitle: ws.title || body.workspace,
         tasks: tasks.filter((t) => t.assignee_id === p.id),
         portalUrl, company, todayIso,
       });

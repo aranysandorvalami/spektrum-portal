@@ -278,9 +278,26 @@ async function loadUserInfo() {
     else if (userPermissions.databases.includes(userPermissions.system_default_db)) currentDb = userPermissions.system_default_db;
     else if (userPermissions.databases.length > 0) currentDb = userPermissions.databases[0];
     else currentDb = "turne_2026";
+    // Az értesítő levél linkje: ?db=<munkatér>&concert=<koncert azonosító>
+    const linkDb = new URLSearchParams(location.search).get("db");
+    if (linkDb && userPermissions.databases.includes(linkDb)) currentDb = linkDb;
     dbSelect.value = currentDb;
 
-    loadData();
+    loadData().then(focusLinkedConcert);
+}
+
+// A levélből érkezve odagörget a koncerthez és kiemeli (egyszer, utána a link paramétereit eltávolítja)
+function focusLinkedConcert() {
+    const id = new URLSearchParams(location.search).get("concert");
+    if (!id) return;
+    history.replaceState(null, "", location.pathname);
+    const row = [...document.querySelectorAll("tr[data-concert-id]")].find(r => r.dataset.concertId === id);
+    if (!row) return;
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.style.transition = "background-color 1.2s ease, box-shadow 1.2s ease";
+    row.style.backgroundColor = "rgba(244, 63, 94, .14)";
+    row.style.boxShadow = "inset 3px 0 0 #f43f5e";
+    setTimeout(() => { row.style.backgroundColor = ""; row.style.boxShadow = ""; }, 4000);
 }
 
 async function switchDatabase(dbName) {
@@ -304,11 +321,13 @@ function assigneeName(id) {
 
 async function loadData() {
     try {
-        loadAssignableUsers().then(render);
+        const users = loadAssignableUsers();
         const res = await authFetch(`/api/data?db=${currentDb}&_t=${Date.now()}`);
         appData = await res.json();
         if (!appData.concerts) appData.concerts = [];
         render();
+        await users;
+        render();   // a felelősök neveivel
     } catch (err) {
         console.error("Adatbetöltési hiba:", err);
     }
@@ -417,7 +436,7 @@ function render() {
         }
 
         rowsHTML += `
-            <tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition align-top">
+            <tr data-concert-id="${esc(c.id)}" class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition align-top">
                 <td class="px-3 py-2 whitespace-nowrap font-mono text-[11px] font-bold text-[var(--text-primary)]">
                     ${esc(c.concert_date || '—')}
                     <div class="text-[9px] text-[var(--text-muted)] font-normal">${esc(c.show_time ? 'Kezdés: ' + c.show_time : '')}</div>

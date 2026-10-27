@@ -144,7 +144,9 @@
       const p = await myProfile(true);
       if (!p || p.status !== "approved") {
         // A bejelentkezés a portálon történik
-        location.replace(PORTAL_URL + "?next=" + encodeURIComponent(APP || ""));
+        // A linkben lévő paraméterek (pl. a levélből: ?db=...&concert=...) belépés után is megmaradnak
+        location.replace(PORTAL_URL + "?next=" + encodeURIComponent(APP || "") +
+                         (location.search ? "&q=" + encodeURIComponent(location.search) : ""));
         return ok({ authenticated: false, username: null });
       }
       return ok({ authenticated: true, username: p.username });
