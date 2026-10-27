@@ -1,0 +1,2112 @@
+<!DOCTYPE html>
+<html lang="hu" class="h-full">
+<head>
+
+    <meta charset="UTF-8">
+    <!-- Spektrum: közös bejelentkezés és Supabase adatréteg -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/config.js"></script>
+    <script>window.SPEKTRUM_APP = "budget";</script>
+    <script src="../shared/spektrum-api.js"></script>
+    <script src="../shared/escape.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Budget Manager Spektrumevents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --app-bg: #090c10;
+            --panel-bg: #0d1117;
+            --panel-subtle: #161b22;
+            --panel-hover: #1c2128;
+            --border-color: #30363d;
+            --border-light: #484f58;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --input-bg: #010409;
+            --input-border: #30363d;
+            --accent-blue: #1f6feb;
+            --accent-blue-hover: #388bfd;
+            --sidebar-width: 270px;
+        }
+
+        body.theme-light {
+            --app-bg: #f6f8fa;
+            --panel-bg: #ffffff;
+            --panel-subtle: #f3f4f6;
+            --panel-hover: #eaeef2;
+            --border-color: #d0d7de;
+            --border-light: #afb8c1;
+            --text-primary: #1f2328;
+            --text-secondary: #57606a;
+            --text-muted: #8c959f;
+            --input-bg: #ffffff;
+            --input-border: #d0d7de;
+            --accent-blue: #0969da;
+            --accent-blue-hover: #0860ca;
+        }
+
+        body { 
+            background-color: var(--app-bg); 
+            color: var(--text-primary); 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        }
+
+        .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+        .ui-panel { background-color: var(--panel-bg); border-color: var(--border-color); }
+        .ui-subtle { background-color: var(--panel-subtle); border-color: var(--border-color); }
+
+        .form-control {
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 1px var(--accent-blue);
+        }
+
+        #mainSidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            max-width: var(--sidebar-width);
+            transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+        }
+        
+        @media (min-width: 768px) {
+            #mainSidebar.sidebar-collapsed {
+                margin-left: calc(-1 * var(--sidebar-width)) !important;
+                border-right-width: 0px !important;
+                pointer-events: none;
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 767px) {
+            #mainSidebar {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                transform: translateX(-100%);
+                box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+                z-index: 50;
+            }
+            #mainSidebar.sidebar-mobile-open {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col text-xs antialiased overflow-hidden">
+
+    <!-- BEJELENTKEZŐ ÉS REGISZTRÁCIÓS PANEL -->
+    <div id="loginScreen" class="fixed inset-0 bg-[#040608] flex items-center justify-center p-4 z-50">
+        <div class="ui-panel border rounded-md w-full max-w-sm p-6 shadow-2xl">
+            <div class="flex items-center gap-3 border-b border-[var(--border-color)] pb-4 mb-5">
+                <div class="w-9 h-9 rounded ui-subtle border border-[var(--border-light)] flex items-center justify-center text-[var(--text-secondary)]">
+                    <i class="fa-solid fa-calculator text-base"></i>
+                </div>
+                <div>
+                    <h1 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Budget Spektrumevents</h1>
+                    <p class="text-[11px] text-[var(--text-secondary)] font-mono" id="authSubtitle">Pénzügyi & Logisztikai Rendszer</p>
+                </div>
+            </div>
+
+            <!-- Login Form -->
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-3.5">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Felhasználónév vagy E-mail cím</label>
+                    <input type="text" id="loginUsername" required placeholder="pl. bkovacs vagy bkovacs@spektrumevents.hu" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-tight">Jelszó</label>
+                        <button type="button" onclick="openForgotPwModal()" class="text-[10px] text-[var(--accent-blue)] hover:underline">Elfelejtetted?</button>
+                    </div>
+                    <div class="relative">
+                        <input type="password" id="loginPassword" required class="form-control w-full rounded pl-2.5 pr-8 py-1.5 text-xs">
+                        <button type="button" onclick="togglePasswordVisibility('loginPassword', 'loginEyeIcon')" class="absolute right-2.5 top-2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                            <i class="fa-solid fa-eye text-xs" id="loginEyeIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="loginError" class="text-[11px] text-rose-500 hidden font-mono"></p>
+                <button type="submit" class="w-full bg-[#1f6feb] hover:bg-[#388bfd] text-white font-semibold py-1.5 rounded transition">
+                    Belépés a rendszerbe
+                </button>
+                <div class="text-center pt-2">
+                    <button type="button" onclick="toggleAuthMode('register')" class="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline">Új fiók igénylése &rarr;</button>
+                </div>
+            </form>
+
+            <!-- Register Form -->
+            <form id="registerForm" onsubmit="handleRegister(event)" class="space-y-3 hidden">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Teljes Név</label>
+                    <input type="text" id="regDisplayName" required placeholder="pl. Kovács Béla" class="form-control w-full rounded px-2.5 py-1.5 text-xs">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">E-mail cím</label>
+                    <input type="email" id="regEmail" required placeholder="pl. bela@spektrumevents.hu" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Felhasználónév (belépéshez)</label>
+                    <input type="text" id="regUsername" required placeholder="pl. bkovacs" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Jelszó</label>
+                    <div class="relative">
+                        <input type="password" id="regPassword" required class="form-control w-full rounded pl-2.5 pr-8 py-1.5 text-xs">
+                        <button type="button" onclick="togglePasswordVisibility('regPassword', 'regEyeIcon')" class="absolute right-2.5 top-2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                            <i class="fa-solid fa-eye text-xs" id="regEyeIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="regMsg" class="text-[11px] hidden font-mono"></p>
+                <button type="submit" class="w-full bg-[#238636] hover:bg-[#2ea043] text-white font-semibold py-1.5 rounded transition">
+                    Regisztráció elküldése
+                </button>
+                <div class="text-center pt-2">
+                    <button type="button" onclick="toggleAuthMode('login')" class="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline">&larr; Vissza a belépéshez</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ELFELEJTETT JELSZÓ MODAL -->
+    <div id="forgotPwModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-sm p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    <i class="fa-solid fa-key text-[var(--text-muted)] mr-1.5"></i> Jelszó visszaállítása
+                </h3>
+                <button onclick="closeForgotPwModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-[var(--text-secondary)]">
+                Add meg a felhasználónevedet vagy az e-mail-címedet a visszaállító link igényléséhez.
+            </p>
+            <form onsubmit="handleSendForgotPassword(event)" class="space-y-3">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Felhasználónév vagy E-mail</label>
+                    <input type="text" id="forgotIdentifier" required class="form-control w-full rounded px-2.5 py-1.5 font-mono">
+                </div>
+                <p id="forgotMsg" class="text-[11px] hidden font-mono"></p>
+                <div class="flex justify-end gap-2 pt-1 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeForgotPwModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Link küldése</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ÚJ JELSZÓ MODAL -->
+    <div id="resetPwModal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-sm p-5 shadow-2xl space-y-4">
+            <div class="border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    <i class="fa-solid fa-lock text-emerald-500 mr-1.5"></i> Új Jelszó Beállítása
+                </h3>
+                <p class="text-[11px] text-[var(--text-muted)] mt-1">Add meg az új jelszavadat a hozzáférés helyreállításához.</p>
+            </div>
+            <form onsubmit="handleExecutePasswordReset(event)" class="space-y-3">
+                <input type="hidden" id="resetTokenValue">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Új Jelszó</label>
+                    <input type="password" id="resetNewPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Új Jelszó Megerősítése</label>
+                    <input type="password" id="resetConfirmPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                </div>
+                <p id="resetMsg" class="text-[11px] hidden font-mono"></p>
+                <div class="pt-2 border-t border-[var(--border-color)]">
+                    <button type="submit" class="w-full px-3 py-1.5 bg-[#238636] hover:bg-[#2ea043] text-white rounded font-semibold text-xs">Jelszó Mentése és Belépés</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MOBIL BACKDROP -->
+    <div id="sidebarBackdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 z-40 hidden md:hidden"></div>
+
+    <!-- FŐ ALKALMAZÁS FELÜLET -->
+    <div id="appScreen" class="hidden h-full flex flex-row overflow-hidden relative">
+        
+        <!-- SIDEBAR -->
+        <aside id="mainSidebar" class="ui-panel border-r flex flex-col justify-between flex-shrink-0 z-30 h-full select-none overflow-hidden">
+            <div class="flex-1 overflow-y-auto custom-scroll flex flex-col">
+                
+                <!-- PROFIL & MUNKAMENET BLOKK -->
+                <div class="p-3 border-b border-[var(--border-color)] ui-subtle">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <div class="w-7 h-7 rounded bg-[var(--input-bg)] border border-[var(--border-color)] flex items-center justify-center font-bold text-slate-300 font-mono text-xs cursor-pointer hover:border-[#1f6feb] transition" onclick="openProfileModal()" title="Fiókbeállítások" id="userAvatarLetter">U</div>
+                            <div class="min-w-0 cursor-pointer" onclick="openProfileModal()">
+                                <div class="font-bold text-[var(--text-primary)] truncate text-xs flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                                    <span id="headerDisplayName" class="truncate">Adminisztrátor</span>
+                                </div>
+                                <div class="text-[9px] font-mono text-[var(--text-muted)] truncate flex items-center gap-1">
+                                    <span id="headerUsername">admin</span> &bull; <span id="headerRoleBadge" class="uppercase text-amber-500">EDITOR</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1 flex-shrink-0">
+                            <button onclick="openProfileModal()" class="p-1.5 rounded hover:bg-[var(--panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]" title="Fiókbeállítások & Név">
+                                <i class="fa-solid fa-id-badge text-xs"></i>
+                            </button>
+                            <button onclick="handleLogout()" class="p-1.5 rounded hover:bg-rose-950/40 text-rose-500 hover:text-rose-400" title="Kijelentkezés">
+                                <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- DB választó -->
+                    <div class="mt-2 pt-2 border-t border-[var(--border-color)]">
+                        <div class="flex items-center justify-between text-[10px] uppercase font-bold text-[var(--text-muted)] mb-1">
+                            <span>Projekt / Koncert</span>
+                            <button onclick="openRequestDbModal()" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" title="Csatlakozási kérelem">
+                                <i class="fa-solid fa-plus text-[10px]"></i> Igénylés
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-1.5 ui-panel border border-[var(--border-light)] rounded px-2 py-1">
+                            <i class="fa-solid fa-calendar-days text-[var(--text-muted)] text-[10px]"></i>
+                            <select id="dbSelector" onchange="switchDatabase(this.value)" class="bg-transparent text-[var(--text-primary)] font-mono text-[11px] focus:outline-none cursor-pointer w-full"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CÍMSOR -->
+                <div class="px-3 py-2 border-b border-[var(--border-color)] flex items-center justify-between text-[11px]">
+                    <div class="min-w-0">
+                        <div class="font-bold text-[var(--text-primary)] truncate text-[11px]" id="appTitleDisplay">Budget Manager</div>
+                        <div class="text-[10px] text-[var(--text-muted)] font-mono truncate" id="appSubtitleDisplay">Turné & Koncert Költségvetés</div>
+                    </div>
+                    <button onclick="editTitle()" id="editTitleBtn" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                </div>
+
+                <!-- METRIKÁK -->
+                <div class="p-3 border-b border-[var(--border-color)] space-y-1.5">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-1">Telemetria</div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Tételek</div>
+                            <div id="statTotal" class="font-mono font-bold text-[var(--text-primary)] text-sm">0</div>
+                        </div>
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Bepakolva</div>
+                            <div id="statActive" class="font-mono font-bold text-emerald-500 text-sm">0</div>
+                        </div>
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Kategóriák</div>
+                            <div id="statBlocks" class="font-mono font-bold text-[var(--text-primary)] text-sm">0</div>
+                        </div>
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Össz Kiadás</div>
+                            <div id="statCostMini" class="font-mono font-bold text-rose-500 text-xs truncate">0 Ft</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MUNKATÉR MŰVELETEK -->
+                <div class="p-3 space-y-1">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-2">Eszközkezelés</div>
+                    <button onclick="openAddModal()" id="addDevBtn" class="w-full text-left px-2.5 py-1.5 rounded text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] flex items-center gap-2">
+                        <i class="fa-solid fa-plus text-[var(--text-muted)] w-3.5"></i> <span>Új felszerelés rögzítése</span>
+                    </button>
+                    <button onclick="openAddBlockModal()" id="addBlockBtn" class="w-full text-left px-2.5 py-1.5 rounded text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] flex items-center gap-2">
+                        <i class="fa-solid fa-folder-plus text-[var(--text-muted)] w-3.5"></i> <span>Új kategória</span>
+                    </button>
+                </div>
+
+                <!-- ADMINISZTRÁCIÓ & BEÁLLÍTÁSOK -->
+                <div class="p-3 border-t border-[var(--border-color)] space-y-1 mt-auto">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-2">Vezérlőközpont</div>
+                    
+                    <button id="superAdminBtn" onclick="openUserAdminModal()" class="w-full text-left px-2.5 py-1.5 rounded text-amber-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
+                        <i class="fa-solid fa-shield-halved w-3.5"></i> <span>Rendszer Adminisztráció</span>
+                    </button>
+
+                    <button id="dbAdminBtn" onclick="openDbAdminModal()" class="w-full text-left px-2.5 py-1.5 rounded text-blue-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
+                        <i class="fa-solid fa-database w-3.5"></i> <span>Koncert Felügyelet</span>
+                    </button>
+
+                    <button onclick="openSettingsModal()" class="w-full text-left px-2.5 py-1.5 rounded text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-[var(--text-muted)] w-3.5"></i> <span>Rendszer Beállítások</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- SIDEBAR STATUS -->
+            <div class="p-2.5 border-t border-[var(--border-color)] ui-subtle text-[10px] text-[var(--text-muted)] flex items-center justify-between font-mono flex-shrink-0">
+                <span>Budget Core v3.4</span>
+                <span class="text-emerald-500">ONLINE</span>
+            </div>
+        </aside>
+
+        <!-- JOBB OLDAL: MUNKATERÜLET -->
+        <div class="flex-1 flex flex-col min-w-0 bg-[var(--app-bg)] overflow-hidden">
+            
+            <!-- TOOLBAR -->
+            <div class="h-12 border-b border-[var(--border-color)] px-4 ui-panel flex items-center justify-between gap-3 flex-shrink-0">
+                <div class="flex items-center gap-3 flex-1 max-w-xl">
+                    <button onclick="toggleSidebar()" class="p-1.5 rounded hover:bg-[var(--panel-hover)] text-[var(--text-primary)] focus:outline-none" title="Oldalsáv összecsukása / kinyitása">
+                        <i class="fa-solid fa-bars text-sm"></i>
+                    </button>
+
+                    <div class="flex items-center gap-2 flex-1">
+                        <i class="fa-solid fa-magnifying-glass text-[var(--text-muted)] text-xs"></i>
+                        <input type="text" id="searchInput" placeholder="Szűrés felszerelés, felelős vagy rack alapján..." oninput="render()" class="form-control w-full rounded px-2.5 py-1 text-xs font-mono">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <select id="deptFilter" onchange="render()" class="form-control rounded px-2 py-1 text-xs cursor-pointer">
+                        <option value="">Összes részleg</option>
+                    </select>
+                    <select id="statusFilter" onchange="render()" class="form-control rounded px-2 py-1 text-xs cursor-pointer">
+                        <option value="">Minden státusz</option>
+                        <option value="active">Bepakolva / Rendben</option>
+                        <option value="inactive">Hiányzik / Szerviz</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- ADATTERÜLET -->
+            <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-4" id="contentArea">
+                
+                <!-- ÚTI & KÖLTSÉGVETÉSI SZÁMÍTÓ PANEL -->
+                <div class="ui-panel border rounded-md overflow-hidden shadow-sm">
+                    <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex items-center justify-between">
+                        <div class="flex items-center gap-2 font-mono">
+                            <span class="font-bold text-[var(--text-primary)] text-xs flex items-center gap-1.5">
+                                <i class="fa-solid fa-calculator text-[var(--accent-blue)]"></i> Úti & Koncert Költségvetés
+                            </span>
+                            <span class="text-[var(--text-muted)]">|</span>
+                            <span class="text-[var(--text-secondary)] text-[11px] font-sans">Valós idejű egyenlegszámítás</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 space-y-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Táv (km)</label>
+                                <input type="number" id="calcDistance" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Fogyasztás (L)</label>
+                                <input type="number" id="calcConsumption" step="0.1" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Üzemanyag (Ft/L)</label>
+                                <input type="number" id="calcFuelPrice" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Útdíj (Ft)</label>
+                                <input type="number" id="calcTolls" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Szállás (Ft)</label>
+                                <input type="number" id="calcAccom" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Catering (Ft)</label>
+                                <input type="number" id="calcCatering" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-[var(--text-secondary)] mb-1 uppercase font-mono">Egyéb (Ft)</label>
+                                <input type="number" id="calcOther" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-emerald-500 font-bold mb-1 uppercase font-mono">Gázsi (Ft)</label>
+                                <input type="number" id="calcIncome" onchange="updateCalc()" class="form-control w-full rounded p-1 font-mono text-center border-emerald-500/50 text-emerald-400 font-bold">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-[var(--border-color)]">
+                            <div class="ui-subtle p-2 rounded border border-[var(--border-color)] flex justify-between items-center">
+                                <span class="text-[11px] text-[var(--text-secondary)]">Üzemanyag Költség:</span>
+                                <span id="fuelCostDisplay" class="font-mono font-bold text-amber-500 text-xs">0 Ft</span>
+                            </div>
+                            <div class="ui-subtle p-2 rounded border border-[var(--border-color)] flex justify-between items-center">
+                                <span class="text-[11px] text-[var(--text-secondary)]">Összes Kiadás:</span>
+                                <span id="totalCostDisplay" class="font-mono font-bold text-rose-500 text-xs">0 Ft</span>
+                            </div>
+                            <div class="ui-subtle p-2 rounded border border-[var(--border-color)] flex justify-between items-center">
+                                <span class="text-[11px] text-[var(--text-secondary)]">Tiszta Nyereség:</span>
+                                <span id="profitDisplay" class="font-mono font-bold text-emerald-400 text-xs">0 Ft</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CSOMAGOLÁSI ÉS ESZKÖZLISTÁK TÁBLÁZATBAN -->
+                <div id="blocksContainer" class="space-y-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. MODULÁRIS FIÓKBEÁLLÍTÁSOK MENÜ -->
+    <div id="profileModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-2xl h-[520px] shadow-2xl flex flex-col overflow-hidden">
+            <div class="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center ui-subtle">
+                <div class="flex items-center gap-2 text-[var(--text-primary)] font-bold uppercase tracking-wider text-xs">
+                    <i class="fa-solid fa-id-badge text-[var(--text-muted)]"></i> Felhasználói Fiókbeállítások
+                </div>
+                <button onclick="closeProfileModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-1 flex flex-row overflow-hidden">
+                <div class="w-48 border-r border-[var(--border-color)] ui-subtle p-2 space-y-1 flex-shrink-0">
+                    <button onclick="switchProfileTab('general')" id="profTabBtnGeneral" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2">
+                        <i class="fa-solid fa-user-pen w-4"></i> Profil adatok
+                    </button>
+                    <button onclick="switchProfileTab('security')" id="profTabBtnSecurity" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-lock w-4"></i> Biztonság & Jelszó
+                    </button>
+                    <button onclick="switchProfileTab('sessions')" id="profTabBtnSessions" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved w-4"></i> Munkamenetek
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scroll p-4 text-xs">
+                    <div id="profTabGeneral" class="space-y-4">
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px] mb-2">Fiók Állapot</div>
+                            <div class="space-y-1 font-mono text-[11px]">
+                                <div class="flex justify-between"><span class="text-[var(--text-muted)]">Szerepkör:</span> <span id="profDetailRole" class="font-bold text-amber-500"></span></div>
+                                <div class="flex justify-between"><span class="text-[var(--text-muted)]">Elérhető projektek:</span> <span id="profDetailDbs" class="text-[var(--text-primary)]"></span></div>
+                            </div>
+                        </div>
+
+                        <form onsubmit="handleUpdateProfile(event)" class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-3">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px]">Azonosító Adatok</div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Teljes Név (megjelenített név)</label>
+                                <input type="text" id="profInputDisplayName" required class="form-control w-full rounded px-2.5 py-1.5 text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">E-mail cím</label>
+                                <input type="email" id="profInputEmail" required class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Felhasználónév (belépéshez)</label>
+                                <input type="text" id="profInputUsername" required class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                            </div>
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="profTabSecurity" class="space-y-4 hidden">
+                        <form onsubmit="handleProfilePasswordChange(event)" class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-3">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px]">Jelszó Módosítása</div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Jelenlegi jelszó</label>
+                                <input type="password" id="profOldPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                            </div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Új jelszó</label>
+                                <input type="password" id="profNewPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                            </div>
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Új jelszó rögzítése</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="profTabSessions" class="space-y-4 hidden">
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px]">Aktív Munkamenet</div>
+                            <p class="text-[11px] text-[var(--text-secondary)]">Jelenleg erről az eszközről vagy bejelentkezve Budget tokenhitelesítéssel.</p>
+                            <div class="p-2 ui-panel rounded border border-[var(--border-color)] font-mono text-[10px] text-emerald-500 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Hitelesített aktív munkamenet
+                                </div>
+                                <span id="profSessionIdDisplay" class="text-[9px] text-[var(--text-muted)] truncate max-w-xs"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. RENDSZER BEÁLLÍTÁSOK -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-[var(--text-muted)]"></i> Rendszer Beállítások
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <form onsubmit="handleSaveSettings(event)" class="space-y-4 text-xs">
+                <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                    <div class="font-bold text-[var(--text-primary)] uppercase tracking-wide text-[10px] flex items-center justify-between">
+                        <span>Felületi Téma</span>
+                        <span id="activeThemeBadge" class="text-[9px] font-mono px-1.5 py-0.5 rounded ui-panel border border-[var(--border-color)]">SÖTÉT</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="applyTheme('dark')" id="themeBtnDark" class="flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-moon"></i> Sötét Mód
+                        </button>
+                        <button type="button" onclick="applyTheme('light')" id="themeBtnLight" class="flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-sun"></i> Világos Mód
+                        </button>
+                    </div>
+                </div>
+
+                <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                    <div class="font-bold text-[var(--text-primary)] uppercase tracking-wide text-[10px]">Indulási Projekt</div>
+                    <div>
+                        <label class="block text-[var(--text-secondary)] mb-1">Saját kezdő projektem:</label>
+                        <select id="setMyPreferredDb" class="form-control w-full rounded px-2 py-1.5 font-mono"></select>
+                    </div>
+
+                    <div id="globalDefaultDbContainer" class="hidden pt-2 border-t border-[var(--border-color)]">
+                        <label class="block text-amber-500 font-semibold mb-1">Rendszerszintű globális kezdő projekt:</label>
+                        <select id="setGlobalDefaultDb" class="form-control w-full rounded px-2 py-1.5 font-mono border-amber-500/40"></select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeSettingsModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. RENDSZER FŐADMINISZTRÁCIÓ -->
+    <div id="userAdminModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center ui-subtle">
+                <div class="flex items-center gap-2 text-amber-500 font-bold uppercase tracking-wider text-xs">
+                    <i class="fa-solid fa-shield-halved"></i> Rendszer Főadminisztrációs Központ
+                </div>
+                <button onclick="closeUserAdminModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-1 flex flex-row overflow-hidden">
+                <div class="w-52 border-r border-[var(--border-color)] ui-subtle p-2 space-y-1 flex-shrink-0">
+                    <button onclick="switchAdminTab('users')" id="tabBtnUsers" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2">
+                        <i class="fa-solid fa-users w-4"></i> Zenekari Tagok
+                    </button>
+                    <button onclick="switchAdminTab('roles')" id="tabBtnRoles" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-user-shield w-4"></i> Szerepkörök
+                    </button>
+                    <button onclick="switchAdminTab('databases')" id="tabBtnDatabases" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-calendar-days w-4"></i> Koncertek / Projektek
+                    </button>
+                    <button onclick="switchAdminTab('requests')" id="tabBtnRequests" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-code-pull-request w-4"></i> Igénylések
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scroll p-4 text-xs">
+                    <div id="adminTabUsers" class="space-y-4">
+                        <div id="pendingUsersSection" class="hidden">
+                            <h4 class="font-bold text-amber-500 uppercase tracking-wide mb-2 text-[10px]">Jóváhagyásra Váró Regisztrációk</h4>
+                            <div id="pendingUsersContainer" class="space-y-1.5"></div>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Zenekari Tagok Fiókjai</h4>
+                            <div id="userListContainer" class="space-y-1.5"></div>
+                        </div>
+
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-3 mt-4">
+                            <h4 class="font-bold text-[var(--text-primary)] text-xs uppercase" id="userFormTitle">Tag Rögzítése / Szerkesztése</h4>
+                            <form onsubmit="handleSaveUser(event)" class="space-y-3">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Teljes Név</label>
+                                        <input type="text" id="newDisplayName" required class="form-control w-full rounded px-2 py-1 text-xs">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">E-mail cím</label>
+                                        <input type="email" id="newEmail" class="form-control w-full rounded px-2 py-1 text-xs font-mono">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Felhasználónév (belépéshez)</label>
+                                        <input type="text" id="newUsername" required class="form-control w-full rounded px-2 py-1 text-xs font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Új jelszó megadása</label>
+                                        <input type="password" id="newPassword" class="form-control w-full rounded px-2 py-1 text-xs">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Szerepkör</label>
+                                        <select id="newRole" class="form-control w-full rounded px-2 py-1 text-xs"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Hozzárendelt Projektek</label>
+                                        <select id="newDbSelect" multiple class="form-control w-full rounded px-2 py-1 h-16 custom-scroll font-mono text-[11px]"></select>
+                                    </div>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-1 border-t border-[var(--border-color)]">
+                                    <button type="button" onclick="resetUserForm()" class="px-3 py-1 ui-panel text-[var(--text-secondary)] rounded border border-[var(--border-color)]">Alaphelyzet</button>
+                                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="adminTabRoles" class="space-y-4 hidden">
+                        <div>
+                            <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Szerepkörök & Jogosultságok</h4>
+                            <div id="roleListContainer" class="space-y-2"></div>
+                        </div>
+                    </div>
+
+                    <div id="adminTabDatabases" class="space-y-4 hidden">
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                            <h4 class="font-bold text-[var(--text-primary)] text-[10px] uppercase">Új Koncert / Projekt Létrehozása</h4>
+                            <form onsubmit="handleCreateDb(event)" class="flex gap-2">
+                                <input type="text" id="newDbNameInput" placeholder="Azonosító (pl. turne_2026)" required class="form-control flex-1 rounded px-2.5 py-1.5 font-mono">
+                                <button type="submit" class="bg-[#1f6feb] hover:bg-[#388bfd] text-white px-3 py-1.5 rounded font-medium">Létrehozás</button>
+                            </form>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Rendszer Projektek</h4>
+                            <div id="dbListContainer" class="space-y-1"></div>
+                        </div>
+                    </div>
+
+                    <div id="adminTabRequests" class="space-y-4 hidden">
+                        <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Beérkezett Csatlakozási Igények</h4>
+                        <div id="dbRequestsContainer" class="space-y-1.5"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. ADATBÁZIS FELÜGYELET MODAL (DB ADMINOKNAK) -->
+    <div id="dbAdminModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-2xl p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-blue-500 flex items-center gap-2">
+                    <i class="fa-solid fa-calendar-days"></i> Koncert Felügyeleti Pult
+                </h3>
+                <button onclick="closeDbAdminModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="overflow-y-auto custom-scroll pr-1 flex-1 space-y-4 text-xs">
+                <div class="ui-subtle border border-[var(--border-color)] p-3 rounded">
+                    <span class="text-[var(--text-secondary)]">Felügyeleted alá tartozó koncertek: </span>
+                    <span id="dbAdminManagedList" class="font-mono font-bold text-[var(--text-primary)]"></span>
+                </div>
+                <div>
+                    <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Csatlakozási Kérelmek Jóváhagyása</h4>
+                    <div id="dbAdminRequestsContainer" class="space-y-1.5"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ESZKÖZ RÖGZÍTŐ MODAL -->
+    <div id="deviceModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-y-auto custom-scroll">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 id="modalTitle" class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Felszerelés Rögzítése</h3>
+                <button onclick="closeModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="deviceForm" onsubmit="saveDevice(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="deviceId">
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Felszerelés Megnevezése</label>
+                    <input type="text" id="devName" required class="form-control w-full rounded px-2.5 py-1.5" placeholder="pl. Shure SM58 Mikrofon szett">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[var(--text-secondary)] mb-1">Mennyiség</label>
+                        <input type="text" id="devIp" required class="form-control w-full rounded px-2.5 py-1.5 font-mono" placeholder="pl. 4 db">
+                    </div>
+                    <div>
+                        <label class="block text-[var(--text-secondary)] mb-1">Tároló / Rack</label>
+                        <input type="text" id="devMac" class="form-control w-full rounded px-2.5 py-1.5 font-mono" placeholder="pl. Flycase #2">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Felelős Személy</label>
+                    <input type="text" id="devResponsible" class="form-control w-full rounded px-2.5 py-1.5" placeholder="Felelős neve...">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[var(--text-secondary)] mb-1">Kategória & Részleg</label>
+                        <select id="devBlockSelect" onchange="handleBlockSelectChange(this.value)" class="form-control w-full rounded px-2 py-1.5"></select>
+                        <div id="newBlockFields" class="space-y-1.5 mt-2 hidden">
+                            <input type="text" id="devCustomDept" placeholder="Új Részleg..." class="form-control w-full rounded px-2 py-1">
+                            <input type="text" id="devCustomCidr" placeholder="Kategória neve..." class="form-control w-full rounded px-2 py-1 font-mono">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[var(--text-secondary)] mb-1">Állapot</label>
+                        <select id="devStatus" class="form-control w-full rounded px-2 py-1.5">
+                            <option value="active">Bepakolva / Rendben</option>
+                            <option value="inactive">Hiányzik / Javítás alatt</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Eszközfotó csatolása</label>
+                    <input type="file" id="devImageInput" accept="image/*" onchange="previewDeviceImage(this)" class="w-full text-[var(--text-secondary)] file:mr-2 file:py-1 file:px-2.5 file:rounded file:border file:border-[var(--border-light)] file:text-xs file:ui-subtle file:text-[var(--text-primary)] hover:file:bg-[var(--panel-hover)] cursor-pointer">
+                    <input type="hidden" id="devImageData">
+                    <div id="imagePreviewContainer" class="mt-2 hidden relative w-full h-28 ui-subtle rounded border border-[var(--border-color)] overflow-hidden flex items-center justify-center">
+                        <img id="imagePreview" src="" class="max-h-full max-w-full object-contain">
+                        <button type="button" onclick="removeDeviceImage()" class="absolute top-1 right-1 ui-panel text-rose-500 border border-[var(--border-light)] px-2 py-0.5 rounded text-[10px]"><i class="fa-solid fa-xmark"></i> Törlés</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Megjegyzés</label>
+                    <textarea id="devNotes" rows="2" class="form-control w-full rounded px-2.5 py-1.5 font-mono text-[11px]" placeholder="Kábelek, kiegészítők..."></textarea>
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NAGY KÉP NÉZŐ MODAL -->
+    <div id="imageViewerModal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-4 z-50" onclick="closeImageViewer()">
+        <div class="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+            <img id="fullImageView" src="" class="max-w-full max-h-[85vh] object-contain rounded border border-[var(--border-light)] shadow-2xl">
+            <p class="text-[10px] text-white mt-2 font-mono">Kattintson bárhova a bezáráshoz</p>
+        </div>
+    </div>
+
+    <!-- PARTÍCIÓ IGÉNYLŐ MODAL -->
+    <div id="requestDbModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    <i class="fa-solid fa-code-pull-request text-[var(--text-muted)] mr-1.5"></i> Csatlakozás Koncerthez
+                </h3>
+                <button onclick="closeRequestDbModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSendDbRequest(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Cél Projekt Kiválasztása</label>
+                    <select id="availableDbSelect" class="form-control w-full rounded px-2.5 py-1.5 font-mono"></select>
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeRequestDbModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Kérelem elküldése</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- KATEGÓRIA MODAL -->
+    <div id="blockModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Új Kategória Hozzáadása</h3>
+                <button onclick="closeBlockModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="saveBlock(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Részleg (pl. Hangtechnika, Fény, Színpad)</label>
+                    <input type="text" id="blockDept" required class="form-control w-full rounded px-2.5 py-1.5" placeholder="pl. Hangtechnika">
+                </div>
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Kategória Megnevezése</label>
+                    <input type="text" id="blockCidr" required class="form-control w-full rounded px-2.5 py-1.5 font-mono" placeholder="pl. Mikrofonok & Rádiósok">
+                </div>
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Címke / Rövid Leírás</label>
+                    <input type="text" id="blockLabel" class="form-control w-full rounded px-2.5 py-1.5" placeholder="pl. Fő színpadi leltár">
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeBlockModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Létrehozás</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentDb = "default";
+        let userPermissions = { username: "", display_name: "", email: "", is_superadmin: false, role: "editor", role_name: "Szerkesztő", permissions: {}, databases: [], all_databases: [], preferred_db: "default", system_default_db: "default" };
+        let appData = { 
+            title: "Budget Manager Spektrumevents", 
+            subtitle: "Turné & Koncert Költségvetés", 
+            trip_config: { distance_km: 0, consumption_l: 10, fuel_price: 620, tolls: 0, accommodation: 0, catering: 0, other_expenses: 0, fee_income: 0 },
+            blocks: [], 
+            devices: [] 
+        };
+        let currentSessionId = localStorage.getItem("session_id") || "";
+        let availableRoles = {};
+
+        /* TÉMAKEZELŐ */
+        function initTheme() {
+            const savedTheme = localStorage.getItem("budget_theme") || "dark";
+            applyTheme(savedTheme);
+        }
+
+        function applyTheme(theme) {
+            const isLight = (theme === 'light');
+            if (isLight) {
+                document.body.classList.add('theme-light');
+            } else {
+                document.body.classList.remove('theme-light');
+            }
+            localStorage.setItem("budget_theme", theme);
+            
+            const badge = document.getElementById("activeThemeBadge");
+            if (badge) badge.innerText = isLight ? "VILÁGOS" : "SÖTÉT";
+
+            const btnDark = document.getElementById("themeBtnDark");
+            const btnLight = document.getElementById("themeBtnLight");
+            if (btnDark && btnLight) {
+                if (isLight) {
+                    btnLight.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 bg-[#0969da] text-white border-transparent";
+                    btnDark.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 ui-panel border-[var(--border-color)] text-[var(--text-secondary)]";
+                } else {
+                    btnDark.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 bg-[#1f6feb] text-white border-transparent";
+                    btnLight.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 ui-panel border-[var(--border-color)] text-[var(--text-secondary)]";
+                }
+            }
+        }
+
+        /* SIDEBAR TOGGLE */
+        function toggleSidebar() {
+            const sidebar = document.getElementById("mainSidebar");
+            const backdrop = document.getElementById("sidebarBackdrop");
+            const isMobile = window.innerWidth < 768;
+
+            if (isMobile) {
+                const isOpen = sidebar.classList.contains("sidebar-mobile-open");
+                if (isOpen) {
+                    sidebar.classList.remove("sidebar-mobile-open");
+                    backdrop.classList.add("hidden");
+                } else {
+                    sidebar.classList.add("sidebar-mobile-open");
+                    backdrop.classList.remove("hidden");
+                }
+            } else {
+                const isCollapsed = sidebar.classList.toggle("sidebar-collapsed");
+                localStorage.setItem("budget_sidebar_collapsed", isCollapsed ? "1" : "0");
+            }
+        }
+
+        function restoreSidebarState() {
+            if (window.innerWidth >= 768) {
+                const isCollapsed = localStorage.getItem("budget_sidebar_collapsed") === "1";
+                if (isCollapsed) document.getElementById("mainSidebar").classList.add("sidebar-collapsed");
+            }
+        }
+
+        async function authFetch(url, options = {}) {
+            options.headers = options.headers || {};
+            if (currentSessionId) {
+                options.headers['Authorization'] = `Bearer ${currentSessionId}`;
+            }
+            return fetch(url, options);
+        }
+
+        function togglePasswordVisibility(inputId, iconId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(iconId);
+            if (input.type === "password") {
+                input.type = "text";
+                icon.classList.remove("fa-eye");
+                icon.classList.add("fa-eye-slash");
+            } else {
+                input.type = "password";
+                icon.classList.remove("fa-eye-slash");
+                icon.classList.add("fa-eye");
+            }
+        }
+
+        function toggleAuthMode(mode) {
+            if (mode === 'register') {
+                document.getElementById("loginForm").classList.add("hidden");
+                document.getElementById("registerForm").classList.remove("hidden");
+                document.getElementById("authSubtitle").innerText = "Új hozzáférési kérelem";
+            } else {
+                document.getElementById("registerForm").classList.add("hidden");
+                document.getElementById("loginForm").classList.remove("hidden");
+                document.getElementById("authSubtitle").innerText = "Pénzügyi & Logisztikai Rendszer";
+            }
+        }
+
+        function checkPasswordResetTokenInUrl() {
+            const hash = window.location.hash;
+            if (hash.includes('reset-token=')) {
+                const token = hash.split('reset-token=')[1].split('&')[0];
+                if (token) {
+                    document.getElementById("resetTokenValue").value = token;
+                    document.getElementById("resetPwModal").classList.remove("hidden");
+                    document.getElementById("resetPwModal").classList.add("flex");
+                }
+            }
+        }
+
+        function openForgotPwModal() {
+            document.getElementById("forgotIdentifier").value = "";
+            document.getElementById("forgotMsg").classList.add("hidden");
+            document.getElementById("forgotPwModal").classList.remove("hidden");
+            document.getElementById("forgotPwModal").classList.add("flex");
+        }
+
+        function closeForgotPwModal() {
+            document.getElementById("forgotPwModal").classList.add("hidden");
+            document.getElementById("forgotPwModal").classList.remove("flex");
+        }
+
+        async function handleSendForgotPassword(e) {
+            e.preventDefault();
+            const idVal = document.getElementById("forgotIdentifier").value.trim();
+            const msgEl = document.getElementById("forgotMsg");
+
+            try {
+                const res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: idVal })
+                });
+                const data = await res.json();
+                msgEl.className = "text-[11px] text-emerald-500 font-mono";
+                msgEl.innerText = data.message || "Link elküldve!";
+                msgEl.classList.remove("hidden");
+            } catch (err) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "Kommunikációs hiba a szerverrel!";
+                msgEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleExecutePasswordReset(e) {
+            e.preventDefault();
+            const token = document.getElementById("resetTokenValue").value;
+            const p1 = document.getElementById("resetNewPassword").value;
+            const p2 = document.getElementById("resetConfirmPassword").value;
+            const msgEl = document.getElementById("resetMsg");
+
+            if (p1 !== p2) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "A két új jelszó nem egyezik meg!";
+                msgEl.classList.remove("hidden");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, new_password: p1 })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || "Jelszó sikeresen megváltoztatva! Most már bejelentkezhetsz.");
+                    window.location.hash = "";
+                    document.getElementById("resetPwModal").classList.add("hidden");
+                    document.getElementById("resetPwModal").classList.remove("flex");
+                    checkAuth();
+                } else {
+                    msgEl.className = "text-[11px] text-rose-500 font-mono";
+                    msgEl.innerText = data.error || "Hiba a visszaállítás során!";
+                    msgEl.classList.remove("hidden");
+                }
+            } catch (err) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "Szerver hiba!";
+                msgEl.classList.remove("hidden");
+            }
+        }
+
+        async function checkAuth() {
+            try {
+                const res = await authFetch('/api/auth/check');
+                const data = await res.json();
+                if (data.authenticated) {
+                    document.getElementById("loginScreen").classList.add("hidden");
+                    document.getElementById("appScreen").classList.remove("hidden");
+                    document.getElementById("appScreen").classList.add("flex");
+                    await loadUserInfo();
+                } else {
+                    document.getElementById("loginScreen").classList.remove("hidden");
+                    document.getElementById("appScreen").classList.add("hidden");
+                }
+            } catch (err) {
+                console.error("Auth hiba:", err);
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById("loginUsername").value;
+            const p = document.getElementById("loginPassword").value;
+            const errEl = document.getElementById("loginError");
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    if (data.session_id) {
+                        currentSessionId = data.session_id;
+                        localStorage.setItem("session_id", data.session_id);
+                    }
+                    errEl.classList.add("hidden");
+                    checkAuth();
+                } else {
+                    errEl.innerText = data.error || "Sikertelen azonosítás!";
+                    errEl.classList.remove("hidden");
+                }
+            } catch (err) {
+                errEl.innerText = "Hálózati hiba a szerver felé!";
+                errEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const u = document.getElementById("regUsername").value;
+            const disp = document.getElementById("regDisplayName").value;
+            const email = document.getElementById("regEmail").value;
+            const p = document.getElementById("regPassword").value;
+            const msgEl = document.getElementById("regMsg");
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, display_name: disp, email: email, password: p })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    msgEl.className = "text-[11px] text-emerald-500 font-mono";
+                    msgEl.innerText = data.message;
+                    msgEl.classList.remove("hidden");
+                } else {
+                    msgEl.className = "text-[11px] text-rose-500 font-mono";
+                    msgEl.innerText = data.error || "Regisztrációs hiba!";
+                    msgEl.classList.remove("hidden");
+                }
+            } catch (err) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "Kommunikációs hiba!";
+                msgEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleLogout() {
+            await authFetch('/api/auth/logout', { method: 'POST' });
+            localStorage.removeItem("session_id");
+            window.location.reload();
+        }
+
+        async function loadUserInfo() {
+            const res = await authFetch('/api/user/info');
+            userPermissions = await res.json();
+
+            const displayName = userPermissions.display_name || userPermissions.username;
+            document.getElementById("headerDisplayName").innerText = displayName;
+            document.getElementById("headerUsername").innerText = userPermissions.username;
+            document.getElementById("userAvatarLetter").innerText = displayName.charAt(0).toUpperCase();
+            document.getElementById("headerRoleBadge").innerText = userPermissions.role_name || userPermissions.role.toUpperCase();
+
+            const perms = userPermissions.permissions || {};
+            const isSuper = userPermissions.is_superadmin;
+
+            if (isSuper || perms.can_access_admin) {
+                document.getElementById("superAdminBtn").classList.remove("hidden");
+                document.getElementById("superAdminBtn").classList.add("flex");
+            } else {
+                document.getElementById("superAdminBtn").classList.add("hidden");
+            }
+
+            if (!isSuper && perms.can_manage_dbs) {
+                document.getElementById("dbAdminBtn").classList.remove("hidden");
+                document.getElementById("dbAdminBtn").classList.add("flex");
+            } else {
+                document.getElementById("dbAdminBtn").classList.add("hidden");
+            }
+
+            if (!isSuper && perms.can_edit === false) {
+                document.getElementById("addDevBtn").style.display = 'none';
+                document.getElementById("addBlockBtn").style.display = 'none';
+                document.getElementById("editTitleBtn").style.display = 'none';
+            } else {
+                document.getElementById("addDevBtn").style.display = 'flex';
+                document.getElementById("addBlockBtn").style.display = 'flex';
+                document.getElementById("editTitleBtn").style.display = 'inline-block';
+            }
+
+            const dbSelect = document.getElementById("dbSelector");
+            dbSelect.innerHTML = "";
+            userPermissions.databases.forEach(db => {
+                const opt = document.createElement("option");
+                opt.value = db;
+                opt.innerText = db.replace("_", " ").toUpperCase();
+                dbSelect.appendChild(opt);
+            });
+
+            if (userPermissions.preferred_db && userPermissions.databases.includes(userPermissions.preferred_db)) {
+                currentDb = userPermissions.preferred_db;
+            } else if (userPermissions.databases.includes(userPermissions.system_default_db)) {
+                currentDb = userPermissions.system_default_db;
+            } else if (userPermissions.databases.length > 0) {
+                currentDb = userPermissions.databases[0];
+            } else {
+                currentDb = "default";
+            }
+            dbSelect.value = currentDb;
+
+            loadData();
+        }
+
+        async function switchDatabase(dbName) {
+            currentDb = dbName;
+            loadData();
+        }
+
+        async function loadData() {
+            try {
+                const res = await authFetch(`/api/data?db=${currentDb}&_t=${Date.now()}`, { cache: "no-store" });
+                appData = await res.json();
+                if (!appData.blocks) appData.blocks = [];
+                if (!appData.devices) appData.devices = [];
+                if (!appData.trip_config) {
+                    appData.trip_config = { distance_km: 0, consumption_l: 10, fuel_price: 620, tolls: 0, accommodation: 0, catering: 0, other_expenses: 0, fee_income: 0 };
+                }
+                populateTripFields();
+                render();
+            } catch (err) {
+                console.error("Adatbetöltési hiba:", err);
+            }
+        }
+
+        function populateTripFields() {
+            const tc = appData.trip_config || {};
+            document.getElementById("calcDistance").value = tc.distance_km || 0;
+            document.getElementById("calcConsumption").value = tc.consumption_l || 10;
+            document.getElementById("calcFuelPrice").value = tc.fuel_price || 620;
+            document.getElementById("calcTolls").value = tc.tolls || 0;
+            document.getElementById("calcAccom").value = tc.accommodation || 0;
+            document.getElementById("calcCatering").value = tc.catering || 0;
+            document.getElementById("calcOther").value = tc.other_expenses || 0;
+            document.getElementById("calcIncome").value = tc.fee_income || 0;
+            updateCalc(false);
+        }
+
+        function updateCalc(shouldSave = true) {
+            const dist = parseFloat(document.getElementById("calcDistance").value) || 0;
+            const cons = parseFloat(document.getElementById("calcConsumption").value) || 0;
+            const price = parseFloat(document.getElementById("calcFuelPrice").value) || 0;
+            const tolls = parseFloat(document.getElementById("calcTolls").value) || 0;
+            const accom = parseFloat(document.getElementById("calcAccom").value) || 0;
+            const cater = parseFloat(document.getElementById("calcCatering").value) || 0;
+            const other = parseFloat(document.getElementById("calcOther").value) || 0;
+            const income = parseFloat(document.getElementById("calcIncome").value) || 0;
+
+            const fuelCost = Math.round((dist / 100) * cons * price);
+            const totalCost = fuelCost + tolls + accom + cater + other;
+            const profit = income - totalCost;
+
+            document.getElementById("fuelCostDisplay").innerText = fuelCost.toLocaleString("hu-HU") + " Ft";
+            document.getElementById("totalCostDisplay").innerText = totalCost.toLocaleString("hu-HU") + " Ft";
+            document.getElementById("profitDisplay").innerText = profit.toLocaleString("hu-HU") + " Ft";
+            document.getElementById("statCostMini").innerText = totalCost.toLocaleString("hu-HU") + " Ft";
+
+            if (profit < 0) {
+                document.getElementById("profitDisplay").className = "font-mono font-bold text-rose-500 text-xs";
+            } else {
+                document.getElementById("profitDisplay").className = "font-mono font-bold text-emerald-400 text-xs";
+            }
+
+            appData.trip_config = {
+                distance_km: dist, consumption_l: cons, fuel_price: price, tolls: tolls,
+                accommodation: accom, catering: cater, other_expenses: other, fee_income: income
+            };
+
+            if (shouldSave) saveData();
+        }
+
+        async function saveData() {
+            const perms = userPermissions.permissions || {};
+            if (!userPermissions.is_superadmin && perms.can_edit === false) {
+                alert("Nincs írási jogosultságod ebben a projektben!");
+                return;
+            }
+
+            try {
+                const res = await authFetch(`/api/data?db=${currentDb}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(appData, null, 2)
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.error || "Mentési hiba!");
+                    return;
+                }
+                render();
+            } catch (err) {
+                alert("Mentési hiba a szerveren!");
+            }
+        }
+
+        function render() {
+            document.getElementById("appTitleDisplay").innerText = (appData.title || "Budget Manager Spektrumevents");
+            document.getElementById("appSubtitleDisplay").innerText = appData.subtitle || "Turné & Koncert Költségvetés";
+
+            const search = document.getElementById("searchInput").value.toLowerCase();
+            const deptF = document.getElementById("deptFilter").value;
+            const statusF = document.getElementById("statusFilter").value;
+            const perms = userPermissions.permissions || {};
+            const canEdit = userPermissions.is_superadmin || perms.can_edit !== false;
+            const canDelete = userPermissions.is_superadmin || perms.can_delete !== false;
+
+            const filteredDevs = appData.devices.filter(d => {
+                const matchSearch = d.name.toLowerCase().includes(search) || d.ip.includes(search) || (d.mac && d.mac.toLowerCase().includes(search)) || (d.responsible && d.responsible.toLowerCase().includes(search));
+                const matchDept = !deptF || d.dept === deptF;
+                const matchStatus = !statusF || d.status === statusF;
+                return matchSearch && matchDept && matchStatus;
+            });
+
+            document.getElementById("statTotal").innerText = appData.devices.length;
+            document.getElementById("statActive").innerText = appData.devices.filter(d => d.status === 'active').length;
+            document.getElementById("statBlocks").innerText = appData.blocks.length;
+
+            const depts = [...new Set(appData.blocks.map(b => b.dept).concat(appData.devices.map(d => d.dept)))].filter(Boolean);
+            const deptFilterSelect = document.getElementById("deptFilter");
+            const prevDeptFilter = deptFilterSelect.value;
+            deptFilterSelect.innerHTML = `<option value="">Összes részleg</option>`;
+            depts.forEach(dept => {
+                const opt = document.createElement("option");
+                opt.value = dept;
+                opt.innerText = dept;
+                if (dept === prevDeptFilter) opt.selected = true;
+                deptFilterSelect.appendChild(opt);
+            });
+
+            const contentArea = document.getElementById("blocksContainer");
+            contentArea.innerHTML = "";
+
+            const blocks = [...appData.blocks];
+            blocks.push({ id: "unassigned", cidr: "Besorolatlan tételek", dept: "Egyéb", label: "Kategórián kívüli felszerelés" });
+
+            blocks.forEach(block => {
+                let blockDevs = [];
+                if (block.id === 'unassigned') {
+                    blockDevs = filteredDevs.filter(d => !d.block_id || !appData.blocks.some(b => b.id === d.block_id));
+                } else {
+                    blockDevs = filteredDevs.filter(d => d.block_id === block.id);
+                }
+
+                if (block.id === 'unassigned' && blockDevs.length === 0) return;
+                if (deptF && block.dept !== deptF && blockDevs.length === 0) return;
+
+                const blockCard = document.createElement("div");
+                blockCard.className = "ui-panel border rounded-md overflow-hidden shadow-sm";
+
+                let rowsHTML = "";
+                if (blockDevs.length === 0) {
+                    rowsHTML = `<tr><td colspan="6" class="p-3 text-center text-[var(--text-muted)] font-mono text-[11px]">Nincs tétel rögzítve ebben a kategóriában.</td></tr>`;
+                } else {
+                    blockDevs.forEach(d => {
+                        const isActive = d.status === 'active';
+                        rowsHTML += `
+                            <tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition">
+                                <td class="px-3 py-1.5 w-8">
+                                    <span class="inline-block w-2 h-2 rounded-full ${esc(isActive ? 'bg-emerald-500' : 'bg-amber-500')}" title="${esc(isActive ? 'Bepakolva' : 'Hiányzik')}"></span>
+                                </td>
+                                <td class="px-3 py-1.5 font-semibold text-[var(--text-primary)] whitespace-nowrap">${esc(d.name)}</td>
+                                <td class="px-3 py-1.5 font-mono text-[var(--text-primary)] whitespace-nowrap font-bold">${esc(d.ip)}</td>
+                                <td class="px-3 py-1.5 font-mono text-[var(--text-secondary)] text-[11px] whitespace-nowrap">${(d.mac) ? esc(d.mac) : '<span class="text-[var(--text-muted)]">—</span>'}</td>
+                                <td class="px-3 py-1.5 text-[var(--text-secondary)] max-w-xs truncate text-[11px] font-mono">
+                                    ${d.responsible ? `<span class="text-amber-500 mr-2"><i class="fa-solid fa-user mr-1 text-[10px]"></i>${esc(d.responsible)}</span>` : ''}
+                                    ${esc(d.notes || '')}
+                                </td>
+                                <td class="px-3 py-1.5 text-right whitespace-nowrap">
+                                    <div class="inline-flex items-center gap-2">
+                                        ${d.image ? `<button onclick="openImageViewer(${jsq(d.image)})" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]" title="Fotó"><i class="fa-solid fa-image"></i></button>` : ''}
+                                        ${canEdit ? `<button onclick="openAddModal(${jsq(d.id)})" class="text-[var(--text-muted)] hover:text-blue-500" title="Szerkesztés"><i class="fa-solid fa-pen"></i></button>` : ''}
+                                        ${canDelete ? `<button onclick="deleteDevice(${jsq(d.id)})" class="text-[var(--text-muted)] hover:text-rose-500" title="Törlés"><i class="fa-solid fa-trash"></i></button>` : ''}
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                blockCard.innerHTML = `
+                    <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 font-mono">
+                            <span class="font-bold text-[var(--text-primary)] text-xs">${esc(block.cidr)}</span>
+                            <span class="text-[var(--text-muted)]">|</span>
+                            <span class="text-[var(--text-secondary)] text-[11px] font-sans">${esc(block.label || 'Nincs címke')}</span>
+                            <span class="px-1.5 py-0.2 rounded ui-panel border border-[var(--border-color)] text-[var(--text-primary)] text-[10px] uppercase font-sans">${esc(block.dept)}</span>
+                            <span class="text-[var(--text-muted)] text-[10px]">(${esc(blockDevs.length)} tétel)</span>
+                        </div>
+                        ${block.id !== 'unassigned' && canDelete ? `
+                            <button onclick="deleteBlock(${jsq(block.id)})" class="text-[11px] text-[var(--text-muted)] hover:text-rose-500 flex items-center gap-1">
+                                <i class="fa-solid fa-trash text-[10px]"></i> Kategória törlése
+                            </button>` : ''}
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-[var(--border-color)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider ui-panel">
+                                    <th class="px-3 py-1.5 w-8">Állapot</th>
+                                    <th class="px-3 py-1.5">Felszerelés</th>
+                                    <th class="px-3 py-1.5">Mennyiség</th>
+                                    <th class="px-3 py-1.5">Tároló / Rack</th>
+                                    <th class="px-3 py-1.5">Felelős / Megjegyzés</th>
+                                    <th class="px-3 py-1.5 text-right">Művelet</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHTML}</tbody>
+                        </table>
+                    </div>
+                `;
+                contentArea.appendChild(blockCard);
+            });
+        }
+
+        /* MODULÁRIS FIÓKBEÁLLÍTÁSOK MENÜ */
+        function switchProfileTab(tab) {
+            document.getElementById("profTabGeneral").classList.add("hidden");
+            document.getElementById("profTabSecurity").classList.add("hidden");
+            document.getElementById("profTabSessions").classList.add("hidden");
+
+            const defClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2";
+            const actClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2";
+
+            document.getElementById("profTabBtnGeneral").className = defClass;
+            document.getElementById("profTabBtnSecurity").className = defClass;
+            document.getElementById("profTabBtnSessions").className = defClass;
+
+            if (tab === 'general') {
+                document.getElementById("profTabGeneral").classList.remove("hidden");
+                document.getElementById("profTabBtnGeneral").className = actClass;
+            } else if (tab === 'security') {
+                document.getElementById("profTabSecurity").classList.remove("hidden");
+                document.getElementById("profTabBtnSecurity").className = actClass;
+            } else if (tab === 'sessions') {
+                document.getElementById("profTabSessions").classList.remove("hidden");
+                document.getElementById("profTabBtnSessions").className = actClass;
+            }
+        }
+
+        function openProfileModal() {
+            document.getElementById("profInputDisplayName").value = userPermissions.display_name || userPermissions.username;
+            document.getElementById("profInputEmail").value = userPermissions.email || "";
+            document.getElementById("profInputUsername").value = userPermissions.username;
+            document.getElementById("profDetailRole").innerText = userPermissions.role_name || userPermissions.role.toUpperCase();
+            document.getElementById("profDetailDbs").innerText = userPermissions.databases.join(", ") || "Nincs";
+            document.getElementById("profSessionIdDisplay").innerText = currentSessionId || "N/A";
+
+            document.getElementById("profOldPassword").value = "";
+            document.getElementById("profNewPassword").value = "";
+
+            switchProfileTab('general');
+            document.getElementById("profileModal").classList.remove("hidden");
+            document.getElementById("profileModal").classList.add("flex");
+        }
+
+        function closeProfileModal() {
+            document.getElementById("profileModal").classList.add("hidden");
+            document.getElementById("profileModal").classList.remove("flex");
+        }
+
+        async function handleUpdateProfile(e) {
+            e.preventDefault();
+            const newName = document.getElementById("profInputUsername").value.trim();
+            const newDisplay = document.getElementById("profInputDisplayName").value.trim();
+            const newEmail = document.getElementById("profInputEmail").value.trim();
+            if (!newName) return;
+
+            const res = await authFetch('/api/user/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_username: newName, display_name: newDisplay, email: newEmail })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "Profil adatok mentve!");
+                await loadUserInfo();
+            } else {
+                alert(data.error || "Hiba a módosításkor!");
+            }
+        }
+
+        async function handleProfilePasswordChange(e) {
+            e.preventDefault();
+            const old_pw = document.getElementById("profOldPassword").value;
+            const new_pw = document.getElementById("profNewPassword").value;
+
+            const res = await authFetch('/api/user/save-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_password: old_pw, new_password: new_pw })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert("Jelszavad sikeresen megváltoztatva!");
+                document.getElementById("profOldPassword").value = "";
+                document.getElementById("profNewPassword").value = "";
+                switchProfileTab('general');
+            } else {
+                alert(data.error || "Hiba a jelszó módosításakor!");
+            }
+        }
+
+        /* RENDSZER BEÁLLÍTÁSOK */
+        function openSettingsModal() {
+            const myDbSel = document.getElementById("setMyPreferredDb");
+            myDbSel.innerHTML = "";
+            userPermissions.databases.forEach(db => {
+                const opt = document.createElement("option");
+                opt.value = db;
+                opt.innerText = db.replace("_", " ").toUpperCase();
+                if (db === userPermissions.preferred_db) opt.selected = true;
+                myDbSel.appendChild(opt);
+            });
+
+            if (userPermissions.is_superadmin) {
+                document.getElementById("globalDefaultDbContainer").classList.remove("hidden");
+                const globSel = document.getElementById("setGlobalDefaultDb");
+                globSel.innerHTML = "";
+                userPermissions.all_databases.forEach(db => {
+                    const opt = document.createElement("option");
+                    opt.value = db;
+                    opt.innerText = db.replace("_", " ").toUpperCase();
+                    if (db === userPermissions.system_default_db) opt.selected = true;
+                    globSel.appendChild(opt);
+                });
+            } else {
+                document.getElementById("globalDefaultDbContainer").classList.add("hidden");
+            }
+
+            const currentTheme = localStorage.getItem("budget_theme") || "dark";
+            applyTheme(currentTheme);
+
+            document.getElementById("settingsModal").classList.remove("hidden");
+            document.getElementById("settingsModal").classList.add("flex");
+        }
+
+        function closeSettingsModal() {
+            document.getElementById("settingsModal").classList.add("hidden");
+            document.getElementById("settingsModal").classList.remove("flex");
+        }
+
+        async function handleSaveSettings(e) {
+            e.preventDefault();
+            const payload = {
+                preferred_db: document.getElementById("setMyPreferredDb").value
+            };
+
+            if (userPermissions.is_superadmin) {
+                payload.system_default_db = document.getElementById("setGlobalDefaultDb").value;
+            }
+
+            const res = await authFetch('/api/user/save-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                alert("Beállítások mentve!");
+                closeSettingsModal();
+                await loadUserInfo();
+            } else {
+                alert(data.error || "Hiba a mentéskor!");
+            }
+        }
+
+        /* FŐADMINISZTRÁCIÓ & SZEREPKÖRÖK */
+        function switchAdminTab(tab) {
+            document.getElementById("adminTabUsers").classList.add("hidden");
+            document.getElementById("adminTabRoles").classList.add("hidden");
+            document.getElementById("adminTabDatabases").classList.add("hidden");
+            document.getElementById("adminTabRequests").classList.add("hidden");
+
+            const defClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2";
+            const actClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2";
+
+            document.getElementById("tabBtnUsers").className = defClass;
+            document.getElementById("tabBtnRoles").className = defClass;
+            document.getElementById("tabBtnDatabases").className = defClass;
+            document.getElementById("tabBtnRequests").className = defClass;
+
+            if (tab === 'users') {
+                document.getElementById("adminTabUsers").classList.remove("hidden");
+                document.getElementById("tabBtnUsers").className = actClass;
+            } else if (tab === 'roles') {
+                document.getElementById("adminTabRoles").classList.remove("hidden");
+                document.getElementById("tabBtnRoles").className = actClass;
+            } else if (tab === 'databases') {
+                document.getElementById("adminTabDatabases").classList.remove("hidden");
+                document.getElementById("tabBtnDatabases").className = actClass;
+            } else if (tab === 'requests') {
+                document.getElementById("adminTabRequests").classList.remove("hidden");
+                document.getElementById("tabBtnRequests").className = actClass;
+            }
+        }
+
+        async function openUserAdminModal() {
+            if (!userPermissions.is_superadmin) {
+                alert("Kizárólag Főadminisztrátor nyithatja meg!");
+                return;
+            }
+            await renderAdminData();
+            resetUserForm();
+            switchAdminTab('users');
+            document.getElementById("userAdminModal").classList.remove("hidden");
+            document.getElementById("userAdminModal").classList.add("flex");
+        }
+
+        function closeUserAdminModal() {
+            document.getElementById("userAdminModal").classList.add("hidden");
+            document.getElementById("userAdminModal").classList.remove("flex");
+        }
+
+        async function renderAdminData() {
+            const res = await authFetch('/api/admin/users');
+            if (!res.ok) return;
+            const data = await res.json();
+            availableRoles = data.roles || {};
+
+            const roleSelect = document.getElementById("newRole");
+            roleSelect.innerHTML = "";
+            Object.keys(availableRoles).forEach(rKey => {
+                const r = availableRoles[rKey];
+                const opt = document.createElement("option");
+                opt.value = rKey;
+                opt.innerText = `${r.name} (${rKey})`;
+                roleSelect.appendChild(opt);
+            });
+
+            const roleContainer = document.getElementById("roleListContainer");
+            roleContainer.innerHTML = "";
+            Object.keys(availableRoles).forEach(rKey => {
+                const r = availableRoles[rKey];
+                const card = document.createElement("div");
+                card.className = "flex items-center justify-between p-2.5 ui-panel border border-[var(--border-color)] rounded text-xs";
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-[var(--text-primary)]">${esc(r.name)}</span>
+                            <span class="font-mono text-[10px] text-amber-500 uppercase px-1 rounded ui-subtle border border-[var(--border-color)]">${esc(rKey)}</span>
+                        </div>
+                        <div class="text-[10px] text-[var(--text-muted)] mt-0.5">${esc(r.description || 'Nincs leírás')}</div>
+                    </div>
+                `;
+                roleContainer.appendChild(card);
+            });
+
+            const dbContainer = document.getElementById("dbListContainer");
+            dbContainer.innerHTML = "";
+            (data.all_databases || []).forEach(db => {
+                const item = document.createElement("div");
+                item.className = "flex items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs";
+                item.innerHTML = `
+                    <span class="font-mono text-[var(--text-primary)]"><i class="fa-solid fa-calendar mr-2 text-[var(--text-muted)]"></i>${esc(db.toUpperCase())}</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="switchDatabase(${jsq(db)}); closeUserAdminModal();" class="text-xs text-blue-500 hover:underline">Megnyitás</button>
+                        ${db !== 'default' ? `<button onclick="deleteDatabase(${jsq(db)})" class="text-[var(--text-muted)] hover:text-rose-500 ml-2"><i class="fa-solid fa-trash"></i></button>` : '<span class="text-[10px] text-[var(--text-muted)] font-mono ml-2">[Alapértelmezett]</span>'}
+                    </div>
+                `;
+                dbContainer.appendChild(item);
+            });
+
+            const pContainer = document.getElementById("pendingUsersContainer");
+            pContainer.innerHTML = "";
+            const pendingUsers = data.users.filter(u => u.status === 'pending');
+            if (pendingUsers.length === 0) {
+                document.getElementById("pendingUsersSection").classList.add("hidden");
+            } else {
+                document.getElementById("pendingUsersSection").classList.remove("hidden");
+                pendingUsers.forEach(u => {
+                    const card = document.createElement("div");
+                    card.className = "flex items-center justify-between p-2 ui-panel border border-amber-500/30 rounded text-xs";
+                    card.innerHTML = `
+                        <div class="space-y-0.5">
+                            <div class="font-semibold text-[var(--text-primary)]"><i class="fa-solid fa-user-clock text-amber-500 mr-2"></i>${esc(u.display_name || u.username)}</div>
+                            <div class="text-[10px] text-[var(--text-muted)] font-mono">${esc(u.username)} &bull; ${esc(u.email || 'Nincs e-mail')}</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="approveUser(${jsq(u.username)}, 'approve')" class="px-2 py-0.5 bg-[#238636] text-white rounded text-[11px]">Jóváhagyás</button>
+                            <button onclick="approveUser(${jsq(u.username)}, 'reject')" class="px-2 py-0.5 ui-panel text-rose-500 border border-[var(--border-light)] rounded text-[11px]">Elutasítás</button>
+                        </div>
+                    `;
+                    pContainer.appendChild(card);
+                });
+            }
+
+            const reqContainer = document.getElementById("dbRequestsContainer");
+            reqContainer.innerHTML = "";
+            if ((data.db_requests || []).length === 0) {
+                reqContainer.innerHTML = `<p class="text-xs text-[var(--text-muted)] font-mono italic">Nincs elbírálásra váró kérelem.</p>`;
+            } else {
+                data.db_requests.forEach(r => {
+                    const card = document.createElement("div");
+                    card.className = "flex items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs";
+                    card.innerHTML = `
+                        <div>
+                            <span class="font-medium text-[var(--text-primary)]">${esc(r.username)}</span> &rarr; <span class="text-[var(--text-secondary)] font-mono">${esc(r.database.toUpperCase())}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'approve')" class="px-2 py-0.5 bg-[#238636] text-white rounded text-[11px]">Elfogad</button>
+                            <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'reject')" class="px-2 py-0.5 ui-panel text-rose-500 border border-[var(--border-light)] rounded text-[11px]">Elutasít</button>
+                        </div>
+                    `;
+                    reqContainer.appendChild(card);
+                });
+            }
+
+            const uContainer = document.getElementById("userListContainer");
+            uContainer.innerHTML = "";
+            data.users.filter(u => u.status !== 'pending').forEach(u => {
+                const card = document.createElement("div");
+                card.className = "flex flex-wrap items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs gap-2";
+                
+                const rDef = availableRoles[u.role] || { name: u.role };
+                let roleBadge = `<span class="ui-subtle text-[var(--text-secondary)] border border-[var(--border-color)] px-1.5 py-0.5 rounded font-mono text-[10px] uppercase">${esc(rDef.name)}</span>`;
+                if (u.is_superadmin || u.role === 'superadmin') {
+                    roleBadge = `<span class="bg-amber-500/10 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono text-[10px] uppercase font-bold">SUPERADMIN</span>`;
+                }
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-user text-[var(--text-muted)]"></i>
+                        <div>
+                            <span class="font-medium text-[var(--text-primary)]">${esc(u.display_name || u.username)}</span>
+                            <span class="text-[10px] font-mono text-[var(--text-muted)]">(${esc(u.username)})</span>
+                            ${u.email ? `<span class="text-[10px] font-mono text-[var(--text-secondary)] ml-1">&lt;${esc(u.email)}&gt;</span>` : ''}
+                        </div>
+                        ${roleBadge}
+                    </div>
+                    <div class="text-[var(--text-secondary)] font-mono text-[11px]">
+                        Projektek: <span class="font-semibold text-[var(--text-primary)]">${esc(u.databases.join(", ") || "Nincs")}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="editUser(${jsq(u.username)}, ${jsq(u.display_name || '')}, ${jsq(u.email || '')}, ${jsq(u.role)}, ${jsq(u.databases.join(","))})" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-pen"></i></button>
+                        ${userPermissions.is_superadmin && !u.is_superadmin ? `<button onclick="deleteUser(${jsq(u.username)})" class="text-[var(--text-muted)] hover:text-rose-500 ml-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                    </div>
+                `;
+                uContainer.appendChild(card);
+            });
+
+            const dbSel = document.getElementById("newDbSelect");
+            dbSel.innerHTML = "";
+            (data.all_databases || []).forEach(db => {
+                const opt = document.createElement("option");
+                opt.value = db;
+                opt.innerText = db.replace("_", " ").toUpperCase();
+                opt.className = "py-1 px-2 hover:bg-[var(--panel-hover)] cursor-pointer";
+                dbSel.appendChild(opt);
+            });
+        }
+
+        /* DB ADMIN MODAL */
+        async function openDbAdminModal() {
+            const res = await authFetch('/api/db-admin/requests');
+            if (!res.ok) {
+                alert("Nincs DB Admin jogosultságod!");
+                return;
+            }
+            const data = await res.json();
+            document.getElementById("dbAdminManagedList").innerText = data.managed_databases.join(", ").toUpperCase() || "Nincs felügyelt projekt";
+
+            const reqContainer = document.getElementById("dbAdminRequestsContainer");
+            reqContainer.innerHTML = "";
+            if (data.db_requests.length === 0) {
+                reqContainer.innerHTML = `<p class="text-xs text-[var(--text-muted)] font-mono italic">Nincs elbírálásra váró kérelem a te projektjeidhez.</p>`;
+            } else {
+                data.db_requests.forEach(r => {
+                    const card = document.createElement("div");
+                    card.className = "flex items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs";
+                    card.innerHTML = `
+                        <div>
+                            <span class="font-medium text-[var(--text-primary)]">${esc(r.username)}</span> &rarr; <span class="text-[var(--text-secondary)] font-mono">${esc(r.database.toUpperCase())}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'approve'); openDbAdminModal();" class="px-2 py-0.5 bg-[#238636] text-white rounded text-[11px]">Elfogad</button>
+                            <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'reject'); openDbAdminModal();" class="px-2 py-0.5 ui-panel text-rose-500 border border-[var(--border-light)] rounded text-[11px]">Elutasít</button>
+                        </div>
+                    `;
+                    reqContainer.appendChild(card);
+                });
+            }
+
+            document.getElementById("dbAdminModal").classList.remove("hidden");
+            document.getElementById("dbAdminModal").classList.add("flex");
+        }
+
+        function closeDbAdminModal() {
+            document.getElementById("dbAdminModal").classList.add("hidden");
+            document.getElementById("dbAdminModal").classList.remove("flex");
+        }
+
+        async function approveUser(username, action) {
+            await authFetch('/api/admin/approve-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, action })
+            });
+            renderAdminData();
+        }
+
+        async function approveDbRequest(username, database, action) {
+            await authFetch('/api/admin/approve-db-request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, database, action })
+            });
+            if (userPermissions.is_superadmin) renderAdminData();
+        }
+
+        async function handleCreateDb(e) {
+            e.preventDefault();
+            const name = document.getElementById("newDbNameInput").value;
+            const res = await authFetch('/api/admin/create-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ db_name: name })
+            });
+            if (res.ok) {
+                document.getElementById("newDbNameInput").value = "";
+                alert(`Projekt (${name}) létrehozva!`);
+                await loadUserInfo();
+                renderAdminData();
+            } else {
+                const err = await res.json();
+                alert(err.error || "Hiba a projekt létrehozásakor!");
+            }
+        }
+
+        async function deleteDatabase(dbName) {
+            if (confirm(`BIZTOSAN TÖRÖLNI KÍVÁNOD A(Z) [${dbName.toUpperCase()}] PROJEKTET? Minden adat véglegesen elveszik!`)) {
+                const res = await authFetch(`/api/admin/databases/${dbName}`, { method: 'DELETE' });
+                if (res.ok) {
+                    alert(`Projekt (${dbName}) törölve!`);
+                    await loadUserInfo();
+                    renderAdminData();
+                } else {
+                    const err = await res.json();
+                    alert(err.error || "Hiba a törléskor!");
+                }
+            }
+        }
+
+        function editUser(uName, dName, email, role, dbsStr) {
+            const uInput = document.getElementById("newUsername");
+            uInput.value = uName;
+            uInput.dataset.oldUsername = uName;
+            document.getElementById("newDisplayName").value = dName || uName;
+            document.getElementById("newEmail").value = email || '';
+            document.getElementById("newPassword").value = "";
+            document.getElementById("newRole").value = role;
+
+            const dbs = dbsStr ? dbsStr.split(',') : [];
+            const select = document.getElementById("newDbSelect");
+            Array.from(select.options).forEach(opt => opt.selected = dbs.includes(opt.value));
+
+            document.getElementById("userFormTitle").innerHTML = `Tag Szerkesztése: <span class="font-mono text-[var(--text-primary)]">${esc(dName || uName)}</span>`;
+        }
+
+        function resetUserForm() {
+            const uInput = document.getElementById("newUsername");
+            uInput.value = "";
+            delete uInput.dataset.oldUsername;
+            document.getElementById("newDisplayName").value = "";
+            document.getElementById("newEmail").value = "";
+            document.getElementById("newPassword").value = "";
+            document.getElementById("newRole").value = "editor";
+            const select = document.getElementById("newDbSelect");
+            Array.from(select.options).forEach(opt => opt.selected = false);
+            document.getElementById("userFormTitle").innerHTML = `Tag Rögzítése / Módosítása`;
+        }
+
+        async function handleSaveUser(e) {
+            e.preventDefault();
+            const uInput = document.getElementById("newUsername");
+            const u = uInput.value.trim();
+            const oldU = uInput.dataset.oldUsername || u;
+            const dispName = document.getElementById("newDisplayName").value.trim() || u;
+            const email = document.getElementById("newEmail").value.trim().toLowerCase();
+            const p = document.getElementById("newPassword").value;
+            const r = document.getElementById("newRole").value;
+            const select = document.getElementById("newDbSelect");
+            const selectedDbs = Array.from(select.selectedOptions).map(opt => opt.value);
+
+            const res = await authFetch('/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_username: oldU, username: u, display_name: dispName, email: email, password: p, role: r, databases: selectedDbs })
+            });
+
+            if (res.ok) {
+                await renderAdminData();
+                resetUserForm();
+                alert(`Tag (${dispName}) adatai mentve!`);
+            } else {
+                const err = await res.json();
+                alert(err.error || "Hiba a mentés során!");
+            }
+        }
+
+        async function deleteUser(uName) {
+            if (confirm(`Biztosan törlöd "${uName}" fiókját?`)) {
+                await authFetch(`/api/admin/users/${uName}`, { method: 'DELETE' });
+                renderAdminData();
+            }
+        }
+
+        /* IGÉNYLŐ MODAL */
+        function openRequestDbModal() {
+            const select = document.getElementById("availableDbSelect");
+            select.innerHTML = "";
+            userPermissions.all_databases.forEach(db => {
+                if (!userPermissions.databases.includes(db)) {
+                    const opt = document.createElement("option");
+                    opt.value = db;
+                    opt.innerText = db.toUpperCase();
+                    select.appendChild(opt);
+                }
+            });
+
+            if (select.options.length === 0) {
+                alert("Minden meglévő projekthez rendelkezel hozzáféréssel!");
+                return;
+            }
+
+            document.getElementById("requestDbModal").classList.remove("hidden");
+            document.getElementById("requestDbModal").classList.add("flex");
+        }
+        function closeRequestDbModal() { document.getElementById("requestDbModal").classList.add("hidden"); document.getElementById("requestDbModal").classList.remove("flex"); }
+
+        async function handleSendDbRequest(e) {
+            e.preventDefault();
+            const db = document.getElementById("availableDbSelect").value;
+            const res = await authFetch('/api/user/request-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ database: db })
+            });
+
+            if (res.ok) {
+                alert(`Kérelem leadva a(z) [${db.toUpperCase()}] projektre!`);
+                closeRequestDbModal();
+            }
+        }
+
+        /* ESZKÖZ ÉS KATEGÓRIA KEZELÉS */
+        function populateDeviceBlockDropdown(selectedBlockId = "") {
+            const select = document.getElementById("devBlockSelect");
+            select.innerHTML = "";
+
+            if (appData.blocks.length === 0) {
+                const opt = document.createElement("option");
+                opt.value = "__NEW__";
+                opt.innerText = "+ Új Kategória és Részleg megadása...";
+                select.appendChild(opt);
+            } else {
+                appData.blocks.forEach(b => {
+                    const opt = document.createElement("option");
+                    opt.value = b.id;
+                    opt.innerText = `${b.cidr} - ${b.dept} (${b.label || 'Nincs leírás'})`;
+                    if (b.id === selectedBlockId) opt.selected = true;
+                    select.appendChild(opt);
+                });
+
+                const newOpt = document.createElement("option");
+                newOpt.value = "__NEW__";
+                newOpt.innerText = "+ Új Kategória és Részleg...";
+                newOpt.className = "text-amber-500 font-bold";
+                select.appendChild(newOpt);
+            }
+            handleBlockSelectChange(select.value);
+        }
+
+        function handleBlockSelectChange(val) {
+            const newBlockFields = document.getElementById("newBlockFields");
+            if (val === "__NEW__") newBlockFields.classList.remove("hidden");
+            else newBlockFields.classList.add("hidden");
+        }
+
+        function previewDeviceImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById("devImageData").value = e.target.result;
+                    document.getElementById("imagePreview").src = e.target.result;
+                    document.getElementById("imagePreviewContainer").classList.remove("hidden");
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function removeDeviceImage() {
+            document.getElementById("devImageInput").value = "";
+            document.getElementById("devImageData").value = "";
+            document.getElementById("imagePreview").src = "";
+            document.getElementById("imagePreviewContainer").classList.add("hidden");
+        }
+
+        function openAddModal(id = null) {
+            document.getElementById("deviceForm").reset();
+            document.getElementById("deviceId").value = "";
+            removeDeviceImage();
+
+            let targetBlockId = "";
+            if (id) {
+                const dev = appData.devices.find(d => d.id === id);
+                if (dev) {
+                    document.getElementById("modalTitle").innerText = "Felszerelés Módosítása";
+                    document.getElementById("deviceId").value = dev.id;
+                    document.getElementById("devName").value = dev.name;
+                    document.getElementById("devIp").value = dev.ip;
+                    document.getElementById("devMac").value = dev.mac || '';
+                    document.getElementById("devResponsible").value = dev.responsible || '';
+                    document.getElementById("devStatus").value = dev.status;
+                    document.getElementById("devNotes").value = dev.notes || '';
+                    targetBlockId = dev.block_id || "";
+
+                    if (dev.image) {
+                        document.getElementById("devImageData").value = dev.image;
+                        document.getElementById("imagePreview").src = dev.image;
+                        document.getElementById("imagePreviewContainer").classList.remove("hidden");
+                    }
+                }
+            } else {
+                document.getElementById("modalTitle").innerText = "Új Felszerelés Rögzítése";
+            }
+
+            populateDeviceBlockDropdown(targetBlockId);
+            document.getElementById("deviceModal").classList.remove("hidden");
+            document.getElementById("deviceModal").classList.add("flex");
+        }
+        function closeModal() { document.getElementById("deviceModal").classList.add("hidden"); }
+
+        async function saveDevice(e) {
+            e.preventDefault();
+            const id = document.getElementById("deviceId").value;
+            const blockSel = document.getElementById("devBlockSelect").value;
+
+            let blockId = blockSel;
+            let deptName = "";
+
+            if (blockSel === "__NEW__") {
+                deptName = document.getElementById("devCustomDept").value.trim();
+                const cidrName = document.getElementById("devCustomCidr").value.trim();
+
+                if (!deptName || !cidrName) {
+                    alert("Új kategória esetén add meg a Részleget és a Megnevezést!");
+                    return;
+                }
+
+                blockId = "b_" + Date.now();
+                appData.blocks.push({ id: blockId, dept: deptName, cidr: cidrName, label: "Kategória" });
+            } else {
+                const foundBlock = appData.blocks.find(b => b.id === blockSel);
+                if (foundBlock) deptName = foundBlock.dept;
+            }
+
+            const devData = {
+                id: id ? id : "d_" + Date.now() + "_" + Math.floor(Math.random() * 10000),
+                name: document.getElementById("devName").value,
+                ip: document.getElementById("devIp").value,
+                mac: document.getElementById("devMac").value,
+                responsible: document.getElementById("devResponsible").value,
+                block_id: blockId,
+                dept: deptName,
+                status: document.getElementById("devStatus").value,
+                image: document.getElementById("devImageData").value || "",
+                notes: document.getElementById("devNotes").value
+            };
+
+            if (id) {
+                const idx = appData.devices.findIndex(d => d.id === id);
+                if (idx !== -1) appData.devices[idx] = devData;
+                else appData.devices.push(devData);
+            } else { 
+                appData.devices.push(devData); 
+            }
+
+            closeModal();
+            await saveData();
+        }
+
+        async function deleteDevice(id) {
+            if (confirm("Biztosan törölni szeretnéd ezt a tételt?")) {
+                appData.devices = appData.devices.filter(d => d.id !== id);
+                await saveData();
+            }
+        }
+
+        function openImageViewer(imgSrc) {
+            document.getElementById("fullImageView").src = imgSrc;
+            document.getElementById("imageViewerModal").classList.remove("hidden");
+            document.getElementById("imageViewerModal").classList.add("flex");
+        }
+        function closeImageViewer() {
+            document.getElementById("imageViewerModal").classList.add("hidden");
+            document.getElementById("imageViewerModal").classList.remove("flex");
+        }
+
+        function openAddBlockModal() { document.getElementById("blockModal").classList.remove("hidden"); document.getElementById("blockModal").classList.add("flex"); }
+        function closeBlockModal() { document.getElementById("blockModal").classList.add("hidden"); }
+
+        async function saveBlock(e) {
+            e.preventDefault();
+            appData.blocks.push({
+                id: "b_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+                dept: document.getElementById("blockDept").value,
+                cidr: document.getElementById("blockCidr").value,
+                label: document.getElementById("blockLabel").value
+            });
+            closeBlockModal();
+            await saveData();
+        }
+
+        async function deleteBlock(id) {
+            if (confirm("Törlöd ezt a kategóriát?")) {
+                appData.blocks = appData.blocks.filter(b => b.id !== id);
+                await saveData();
+            }
+        }
+
+        async function editTitle() {
+            const newTitle = prompt("Új főcím:", appData.title);
+            if (newTitle) {
+                appData.title = newTitle;
+                await saveData();
+            }
+        }
+
+        initTheme();
+        restoreSidebarState();
+        checkPasswordResetTokenInUrl();
+        checkAuth();
+    </script>
+</body>
+</html>

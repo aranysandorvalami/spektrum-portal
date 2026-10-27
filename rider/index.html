@@ -1,0 +1,2387 @@
+<!DOCTYPE html>
+<html lang="hu" class="h-full">
+<head>
+
+    <meta charset="UTF-8">
+    <!-- Spektrum: közös bejelentkezés és Supabase adatréteg -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../shared/config.js"></script>
+    <script>window.SPEKTRUM_APP = "rider";</script>
+    <script src="../shared/spektrum-api.js"></script>
+    <script src="../shared/escape.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rider Manager Spektrumevents</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --app-bg: #090c10;
+            --panel-bg: #0d1117;
+            --panel-subtle: #161b22;
+            --panel-hover: #1c2128;
+            --border-color: #30363d;
+            --border-light: #484f58;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --input-bg: #010409;
+            --input-border: #30363d;
+            --accent-blue: #1f6feb;
+            --accent-blue-hover: #388bfd;
+            --sidebar-width: 270px;
+        }
+
+        body.theme-light {
+            --app-bg: #f6f8fa;
+            --panel-bg: #ffffff;
+            --panel-subtle: #f3f4f6;
+            --panel-hover: #eaeef2;
+            --border-color: #d0d7de;
+            --border-light: #afb8c1;
+            --text-primary: #1f2328;
+            --text-secondary: #57606a;
+            --text-muted: #8c959f;
+            --input-bg: #ffffff;
+            --input-border: #d0d7de;
+            --accent-blue: #0969da;
+            --accent-blue-hover: #0860ca;
+        }
+
+        body { 
+            background-color: var(--app-bg); 
+            color: var(--text-primary); 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        }
+
+        .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+        .ui-panel { background-color: var(--panel-bg); border-color: var(--border-color); }
+        .ui-subtle { background-color: var(--panel-subtle); border-color: var(--border-color); }
+
+        .form-control {
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 1px var(--accent-blue);
+        }
+
+        .stage-item { cursor: grab; user-select: none; }
+        .stage-item:active { cursor: grabbing; }
+
+        #mainSidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            max-width: var(--sidebar-width);
+            transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+        }
+        
+        @media (min-width: 768px) {
+            #mainSidebar.sidebar-collapsed {
+                margin-left: calc(-1 * var(--sidebar-width)) !important;
+                border-right-width: 0px !important;
+                pointer-events: none;
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 767px) {
+            #mainSidebar {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                transform: translateX(-100%);
+                box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+                z-index: 50;
+            }
+            #mainSidebar.sidebar-mobile-open {
+                transform: translateX(0);
+            }
+        }
+
+        @media print {
+            header, .no-print, #loginScreen, #userAdminModal, #exportPdfModal, #requestDbModal, #settingsModal, #profileModal, #copyPlotModal, .tab-btn-bar, aside, .toolbar-header { display: none !important; }
+            body { background: white !important; color: black !important; padding: 0 !important; }
+            .print-section { display: block !important; page-break-after: always; color: black !important; }
+            input, textarea, select { border: none !important; background: transparent !important; color: black !important; appearance: none; }
+            #stageCanvas, #lightingCanvas { border: 2px solid black !important; background: #fff !important; }
+            .stage-item { background: #eee !important; border: 1px solid black !important; color: black !important; }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col text-xs antialiased overflow-hidden">
+
+    <!-- BEJELENTKEZŐ ÉS REGISZTRÁCIÓS PANEL -->
+    <div id="loginScreen" class="fixed inset-0 bg-[#040608] flex items-center justify-center p-4 z-50">
+        <div class="ui-panel border rounded-md w-full max-w-sm p-6 shadow-2xl">
+            <div class="flex items-center gap-3 border-b border-[var(--border-color)] pb-4 mb-5">
+                <div class="w-9 h-9 rounded ui-subtle border border-[var(--border-light)] flex items-center justify-center text-[var(--text-secondary)]">
+                    <i class="fa-solid fa-bolt text-base"></i>
+                </div>
+                <div>
+                    <h1 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Spektrumevents RiderOps</h1>
+                    <p class="text-[11px] text-[var(--text-secondary)] font-mono" id="authSubtitle">Rendszer hitelesítés</p>
+                </div>
+            </div>
+
+            <!-- Login Form -->
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-3.5">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Felhasználónév vagy E-mail cím</label>
+                    <input type="text" id="loginUsername" required placeholder="pl. bkovacs vagy bkovacs@ceg.hu" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-tight">Jelszó</label>
+                        <button type="button" onclick="openForgotPwModal()" class="text-[10px] text-[var(--accent-blue)] hover:underline">Elfelejtetted?</button>
+                    </div>
+                    <div class="relative">
+                        <input type="password" id="loginPassword" required class="form-control w-full rounded pl-2.5 pr-8 py-1.5 text-xs">
+                        <button type="button" onclick="togglePasswordVisibility('loginPassword', 'loginEyeIcon')" class="absolute right-2.5 top-2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                            <i class="fa-solid fa-eye text-xs" id="loginEyeIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="loginError" class="text-[11px] text-rose-500 hidden font-mono"></p>
+                <button type="submit" class="w-full bg-[#1f6feb] hover:bg-[#388bfd] text-white font-semibold py-1.5 rounded transition">
+                    Belépés a rendszerbe
+                </button>
+                <div class="text-center pt-2">
+                    <button type="button" onclick="toggleAuthMode('register')" class="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline">Új fiók igénylése &rarr;</button>
+                </div>
+            </form>
+
+            <!-- Register Form -->
+            <form id="registerForm" onsubmit="handleRegister(event)" class="space-y-3 hidden">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Teljes Név</label>
+                    <input type="text" id="regDisplayName" required placeholder="pl. Kovács Béla" class="form-control w-full rounded px-2.5 py-1.5 text-xs">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">E-mail cím</label>
+                    <input type="email" id="regEmail" required placeholder="pl. bela@spektrumevents.hu" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Felhasználónév (belépéshez)</label>
+                    <input type="text" id="regUsername" required placeholder="pl. bkovacs" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1 uppercase tracking-tight">Jelszó</label>
+                    <div class="relative">
+                        <input type="password" id="regPassword" required class="form-control w-full rounded pl-2.5 pr-8 py-1.5 text-xs">
+                        <button type="button" onclick="togglePasswordVisibility('regPassword', 'regEyeIcon')" class="absolute right-2.5 top-2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                            <i class="fa-solid fa-eye text-xs" id="regEyeIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="regMsg" class="text-[11px] hidden font-mono"></p>
+                <button type="submit" class="w-full bg-[#238636] hover:bg-[#2ea043] text-white font-semibold py-1.5 rounded transition">
+                    Regisztráció elküldése
+                </button>
+                <div class="text-center pt-2">
+                    <button type="button" onclick="toggleAuthMode('login')" class="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline">&larr; Vissza a belépéshez</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ELFELEJTETT JELSZÓ MODAL -->
+    <div id="forgotPwModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-sm p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    <i class="fa-solid fa-key text-[var(--text-muted)] mr-1.5"></i> Jelszó visszaállítása
+                </h3>
+                <button onclick="closeForgotPwModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-[var(--text-secondary)]">
+                Add meg a felhasználónevedet vagy a fiókodhoz tartozó e-mail-címet a visszaállító link igényléséhez.
+            </p>
+            <form onsubmit="handleSendForgotPassword(event)" class="space-y-3">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Felhasználónév vagy E-mail</label>
+                    <input type="text" id="forgotIdentifier" required class="form-control w-full rounded px-2.5 py-1.5 font-mono">
+                </div>
+                <p id="forgotMsg" class="text-[11px] hidden font-mono"></p>
+                <div class="flex justify-end gap-2 pt-1 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeForgotPwModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Link küldése</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ÚJ JELSZÓ MODAL -->
+    <div id="resetPwModal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-sm p-5 shadow-2xl space-y-4">
+            <div class="border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    <i class="fa-solid fa-lock text-emerald-500 mr-1.5"></i> Új Jelszó Beállítása
+                </h3>
+            </div>
+            <form onsubmit="handleExecutePasswordReset(event)" class="space-y-3">
+                <input type="hidden" id="resetTokenValue">
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Új Jelszó</label>
+                    <input type="password" id="resetNewPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Új Jelszó Megerősítése</label>
+                    <input type="password" id="resetConfirmPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                </div>
+                <p id="resetMsg" class="text-[11px] hidden font-mono"></p>
+                <div class="pt-2 border-t border-[var(--border-color)]">
+                    <button type="submit" class="w-full px-3 py-1.5 bg-[#238636] hover:bg-[#2ea043] text-white rounded font-semibold text-xs">Jelszó Mentése</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MOBIL BACKDROP -->
+    <div id="sidebarBackdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 z-40 hidden md:hidden"></div>
+
+    <!-- FŐ ALKALMAZÁS FELÜLET -->
+    <div id="appScreen" class="h-full flex flex-row overflow-hidden relative">
+        
+        <!-- SIDEBAR -->
+        <aside id="mainSidebar" class="ui-panel border-r flex flex-col justify-between flex-shrink-0 z-30 h-full select-none overflow-hidden">
+            <div class="flex-1 overflow-y-auto custom-scroll flex flex-col">
+                
+                <!-- PROFIL & MUNKAMENET BLOKK -->
+                <div class="p-3 border-b border-[var(--border-color)] ui-subtle">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <div class="w-7 h-7 rounded bg-[var(--input-bg)] border border-[var(--border-color)] flex items-center justify-center font-bold text-slate-300 font-mono text-xs cursor-pointer hover:border-[#1f6feb] transition" onclick="openProfileModal()" title="Saját Fiók megnyitása" id="userAvatarLetter">U</div>
+                            <div class="min-w-0 cursor-pointer" onclick="openProfileModal()" title="Saját Fiók megnyitása">
+                                <div class="font-bold text-[var(--text-primary)] truncate text-xs flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                                    <span id="headerDisplayName" class="truncate">Adminisztrátor</span>
+                                </div>
+                                <div class="text-[9px] font-mono text-[var(--text-muted)] truncate flex items-center gap-1">
+                                    <span id="headerUsername">admin</span> &bull; <span id="headerRoleBadge" class="uppercase text-amber-500">EDITOR</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1 flex-shrink-0">
+                            <button onclick="openProfileModal()" class="p-1.5 rounded hover:bg-[var(--panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]" title="Fiókbeállítások & Név">
+                                <i class="fa-solid fa-id-badge text-xs"></i>
+                            </button>
+                            <button onclick="handleLogout()" class="p-1.5 rounded hover:bg-rose-950/40 text-rose-500 hover:text-rose-400" title="Kijelentkezés">
+                                <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- DB választó -->
+                    <div class="mt-2 pt-2 border-t border-[var(--border-color)]">
+                        <div class="flex items-center justify-between text-[10px] uppercase font-bold text-[var(--text-muted)] mb-1">
+                            <span>Adatkörnyezet</span>
+                            <button onclick="openRequestDbModal()" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" title="Csatlakozási kérelem új adatbázishoz">
+                                <i class="fa-solid fa-plus text-[10px]"></i> Igénylés
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-1.5 ui-panel border border-[var(--border-light)] rounded px-2 py-1">
+                            <i class="fa-solid fa-database text-[var(--text-muted)] text-[10px]"></i>
+                            <select id="dbSelector" onchange="switchDatabase(this.value)" class="bg-transparent text-[var(--text-primary)] font-mono text-[11px] focus:outline-none cursor-pointer w-full"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CÍMSOR -->
+                <div class="px-3 py-2 border-b border-[var(--border-color)] flex items-center justify-between text-[11px]">
+                    <div class="min-w-0">
+                        <div class="font-bold text-[var(--text-primary)] truncate text-[11px]" id="appTitleDisplay">Rider Manager</div>
+                        <div class="text-[10px] text-[var(--text-muted)] font-mono truncate" id="appSubtitleDisplay">Spektrum StageOps</div>
+                    </div>
+                    <button onclick="editTitle()" id="editTitleBtn" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                </div>
+
+                <!-- METRIKÁK -->
+                <div class="p-3 border-b border-[var(--border-color)] space-y-1.5">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-1">Telemetria</div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Riderek</div>
+                            <div id="statTotalRiders" class="font-mono font-bold text-[var(--text-primary)] text-sm">0</div>
+                        </div>
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Stage Elemek</div>
+                            <div id="statStageItems" class="font-mono font-bold text-emerald-500 text-sm">0</div>
+                        </div>
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Fények</div>
+                            <div id="statLightItems" class="font-mono font-bold text-[var(--text-primary)] text-sm">0</div>
+                        </div>
+                        <div class="p-1.5 rounded ui-subtle border border-[var(--border-color)]">
+                            <div class="text-[9px] uppercase text-[var(--text-muted)]">Input CH</div>
+                            <div id="statInputs" class="font-mono font-bold text-[var(--text-primary)] text-sm">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MUNKATÉR MŰVELETEK -->
+                <div class="p-3 space-y-1">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-2">Munkatér Műveletek</div>
+                    <button onclick="createNewRider()" class="w-full text-left px-2.5 py-1.5 rounded text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] flex items-center gap-2">
+                        <i class="fa-solid fa-plus text-[var(--text-muted)] w-3.5"></i> <span>Új Rider létrehozása</span>
+                    </button>
+                    <button onclick="openExportPdfModal()" class="w-full text-left px-2.5 py-1.5 rounded text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] flex items-center gap-2">
+                        <i class="fa-solid fa-file-pdf text-[var(--text-muted)] w-3.5"></i> <span>Dokumentum / PDF Export</span>
+                    </button>
+                </div>
+
+                <!-- RIDEREK LISTÁJA -->
+                <div class="p-3 border-t border-[var(--border-color)] flex-1 overflow-y-auto custom-scroll">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-2">Elérhető Riderek</div>
+                    <div id="riderList" class="space-y-1"></div>
+                </div>
+
+                <!-- ADMINISZTRÁCIÓ & BEÁLLÍTÁSOK -->
+                <div class="p-3 border-t border-[var(--border-color)] space-y-1 mt-auto">
+                    <div class="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-2">Vezérlőközpont</div>
+                    
+                    <button id="adminUserBtn" onclick="openUserAdminModal()" class="w-full text-left px-2.5 py-1.5 rounded text-amber-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
+                        <i class="fa-solid fa-shield-halved w-3.5"></i> <span>Rendszer Adminisztráció</span>
+                    </button>
+
+                    <button id="dbAdminBtn" onclick="openDbAdminModal()" class="w-full text-left px-2.5 py-1.5 rounded text-blue-500 hover:bg-[var(--panel-hover)] hidden items-center gap-2 font-semibold">
+                        <i class="fa-solid fa-database w-3.5"></i> <span>Adatbázis Felügyelet</span>
+                    </button>
+
+                    <button onclick="openSettingsModal()" class="w-full text-left px-2.5 py-1.5 rounded text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-[var(--text-muted)] w-3.5"></i> <span>Rendszer Beállítások</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- SIDEBAR STATUS -->
+            <div class="p-2.5 border-t border-[var(--border-color)] ui-subtle text-[10px] text-[var(--text-muted)] flex items-center justify-between font-mono flex-shrink-0">
+                <span>RiderOps Core v3.4</span>
+                <span class="text-emerald-500">ONLINE</span>
+            </div>
+        </aside>
+
+        <!-- JOBB OLDAL: MUNKATERÜLET -->
+        <div class="flex-1 flex flex-col min-w-0 bg-[var(--app-bg)] overflow-hidden">
+            
+            <!-- TOOLBAR -->
+            <div class="h-12 border-b border-[var(--border-color)] px-4 ui-panel flex items-center justify-between gap-3 flex-shrink-0 toolbar-header">
+                <div class="flex items-center gap-3 flex-1 max-w-xl">
+                    <button onclick="toggleSidebar()" class="p-1.5 rounded hover:bg-[var(--panel-hover)] text-[var(--text-primary)] focus:outline-none" title="Oldalsáv összecsukása / kinyitása">
+                        <i class="fa-solid fa-bars text-sm"></i>
+                    </button>
+
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-bolt text-[var(--text-muted)] text-xs"></i>
+                        <span class="font-bold text-xs uppercase tracking-tight text-[var(--text-primary)] truncate" id="currentRiderHeaderBadge">Válassz Ridert</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2" id="topToolbarActions">
+                    <button onclick="openExportPdfModal()" class="px-2.5 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded text-xs font-medium flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-file-pdf"></i> <span>PDF Export</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ADATTERÜLET -->
+            <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-4" id="contentArea">
+                <div id="noRiderSelected" class="text-center py-24 text-[var(--text-muted)] font-mono text-xs">
+                    <i class="fa-solid fa-guitar text-4xl mb-3 block text-slate-700"></i>
+                    Válassz ki egy Rider-t a bal oldali listából, vagy hozz létre egy újat a menüben!
+                </div>
+
+                <div id="riderEditor" class="hidden space-y-4">
+                    
+                    <!-- FELSŐ FEJLÉC ÉS VEZÉRLÉS -->
+                    <div class="ui-panel border rounded-md p-3 flex flex-wrap justify-between items-center gap-2 shadow-sm">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-tight mb-1">Rider Megnevezése</label>
+                            <input type="text" id="riderTitle" onchange="updateRiderHeader()" class="form-control w-full rounded px-2.5 py-1.5 text-xs font-bold font-mono">
+                        </div>
+                        <div class="flex items-center gap-2 pt-3 sm:pt-0">
+                            <button onclick="duplicateEntireRider()" title="Teljes Rider klónozása" class="px-3 py-1.5 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded text-xs font-medium flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-clone text-[var(--text-muted)]"></i> <span>Klónozás</span>
+                            </button>
+                            <button onclick="deleteRider()" class="px-3 py-1.5 ui-subtle border border-rose-500/30 text-rose-500 hover:bg-rose-500 hover:text-white rounded text-xs font-medium flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-trash"></i> <span>Törlés</span>
+                            </button>
+                            <button onclick="saveData()" class="px-3.5 py-1.5 bg-[#238636] hover:bg-[#2ea043] text-white rounded font-semibold text-xs flex items-center gap-1.5 shadow transition">
+                                <i class="fa-solid fa-floppy-disk"></i> <span>Mentés</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- FÜLEK SÁVJA -->
+                    <div class="flex border-b border-[var(--border-color)] gap-1 text-xs font-bold ui-subtle p-1 rounded tab-btn-bar overflow-x-auto custom-scroll">
+                        <button onclick="switchTab('stageplot')" id="tabBtn-stageplot" class="tab-btn py-1.5 px-3 text-white bg-[#1f6feb] rounded flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-paint-brush"></i> Stage Plot</button>
+                        <button onclick="switchTab('lamp-plot')" id="tabBtn-lamp-plot" class="tab-btn py-1.5 px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-lightbulb"></i> Fénytechnika & Floor Plot</button>
+                        <button onclick="switchTab('inputs')" id="tabBtn-inputs" class="tab-btn py-1.5 px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-sliders"></i> Input & Megjegyzések</button>
+                        <button onclick="switchTab('crew')" id="tabBtn-crew" class="tab-btn py-1.5 px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-users"></i> Stáblista & Járművek</button>
+                        <button onclick="switchTab('catering')" id="tabBtn-catering" class="tab-btn py-1.5 px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-utensils"></i> Catering</button>
+                    </div>
+
+                    <!-- TAB 1: STAGE PLOT -->
+                    <div id="tab-stageplot" class="tab-content print-section space-y-3">
+                        <div class="ui-panel border rounded-md p-3 space-y-2 no-print shadow-sm">
+                            <div class="flex justify-between items-center text-xs font-bold text-[var(--text-primary)]">
+                                <span class="uppercase tracking-tight text-[11px]"><i class="fa-solid fa-box-open mr-1 text-[var(--text-muted)]"></i> Színpadi Eszköztár (Presets)</span>
+                                <div class="flex gap-2">
+                                    <button onclick="openCopyPlotModal('stage')" class="px-2 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded text-[11px] font-medium">
+                                        <i class="fa-solid fa-copy mr-1 text-[var(--text-muted)]"></i>Plot Másolása...
+                                    </button>
+                                    <button onclick="clearStagePlot()" class="text-rose-500 hover:underline font-normal text-[11px]"><i class="fa-solid fa-trash mr-1"></i>Ürítés</button>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-1.5 p-2 ui-subtle rounded border border-[var(--border-color)] text-xs">
+                                <span class="bg-[#1f6feb] text-white px-2 py-0.5 rounded font-bold self-center text-[10px] uppercase tracking-wider"><i class="fa-solid fa-bolt"></i> Áram:</span>
+                                <button onclick="addStagePreset('power_230v')" class="ui-panel border border-[var(--border-color)] text-[var(--text-primary)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">⚡ 230V Schuko</button>
+                                <button onclick="addStagePreset('power_drop')" class="ui-panel border border-[var(--border-color)] text-[var(--text-primary)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🔌 Tápelosztó (Drop)</button>
+                                <button onclick="addStagePreset('power_cee_16a')" class="bg-rose-950/40 border border-rose-500/40 text-rose-300 px-2 py-0.5 rounded font-bold hover:bg-rose-950/60">🔴 16A 3-Fázis</button>
+                                <button onclick="addStagePreset('power_cee_32a')" class="bg-rose-900/40 border border-rose-500/60 text-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-900/70">🔴 32A 3-Fázis</button>
+                            </div>
+
+                            <div class="flex flex-wrap gap-1.5 text-xs">
+                                <button onclick="addStagePreset('straight_stand')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🎤 Egyenes Állvány</button>
+                                <button onclick="addStagePreset('boom_stand')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🎙️ Gém Állvány</button>
+                                <button onclick="addStagePreset('pedalboard')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🎛️ Pedalboard</button>
+                                <button onclick="addStagePreset('di_box')" class="bg-amber-600/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded hover:bg-amber-600/30">📦 DI-Box</button>
+                                <button onclick="addStagePreset('drums')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🥁 Dobok</button>
+                                <button onclick="addStagePreset('guitar_amp')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🎸 Gitár Amp</button>
+                                <button onclick="addStagePreset('bass_amp')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🔊 Bass Amp</button>
+                                <button onclick="addStagePreset('wedge')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">📐 Monitor Wedge</button>
+                                <button onclick="addStagePreset('iem_monitor')" class="bg-sky-600/20 text-sky-400 border border-sky-500/40 px-2 py-0.5 rounded font-bold hover:bg-sky-600/30">🎧 In-Ear (IEM)</button>
+                            </div>
+                        </div>
+
+                        <!-- Canvas -->
+                        <div id="stageCanvas" class="relative bg-[#010409] border border-[var(--border-color)] rounded-md h-[500px] overflow-hidden shadow-inner">
+                            <div class="absolute bottom-0 w-full text-center bg-[#1f6feb] text-white font-bold py-1 text-xs uppercase tracking-widest pointer-events-none z-0">
+                                ▼ SZÍNPAD ELEJE / KÖZÖNSÉG ÉS FŐ HANGFALAK ▼
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: LAMP PLOT -->
+                    <div id="tab-lamp-plot" class="tab-content print-section hidden space-y-4">
+                        <div class="ui-panel border rounded-md p-3 space-y-2 no-print shadow-sm">
+                            <div class="flex justify-between items-center text-xs font-bold text-[var(--text-primary)]">
+                                <span class="uppercase tracking-tight text-[11px]"><i class="fa-solid fa-lightbulb mr-1 text-[var(--text-muted)]"></i> Floor Fénytechnika Presetek:</span>
+                                <div class="flex gap-2">
+                                    <button onclick="openCopyPlotModal('light')" class="px-2 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded text-[11px] font-medium">
+                                        <i class="fa-solid fa-copy mr-1 text-[var(--text-muted)]"></i>Floor Plot Másolása...
+                                    </button>
+                                    <button onclick="clearLightPlot()" class="text-rose-500 hover:underline font-normal text-[11px]"><i class="fa-solid fa-trash mr-1"></i>Ürítés</button>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-1.5 text-xs">
+                                <button onclick="addLightPreset('spot_moving')" class="bg-amber-600/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded font-bold hover:bg-amber-600/30">🔆 Spot Moving</button>
+                                <button onclick="addLightPreset('beam_moving')" class="bg-sky-600/20 text-sky-400 border border-sky-500/40 px-2 py-0.5 rounded font-bold hover:bg-sky-600/30">🔦 Beam Moving</button>
+                                <button onclick="addLightPreset('wash_moving')" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded font-bold hover:bg-emerald-600/30">🌈 Wash Moving</button>
+                                <button onclick="addLightPreset('led_bar')" class="bg-purple-600/20 text-purple-400 border border-purple-500/40 px-2 py-0.5 rounded font-bold hover:bg-purple-600/30">🚥 LED Bar</button>
+                                <button onclick="addLightPreset('strobe')" class="ui-subtle border border-[var(--border-color)] text-[var(--text-primary)] px-2 py-0.5 rounded font-bold hover:bg-[var(--panel-hover)]">⚡ Stroboszkóp</button>
+                                <button onclick="addLightPreset('blinder')" class="bg-orange-600/20 text-orange-400 border border-orange-500/40 px-2 py-0.5 rounded font-bold hover:bg-orange-600/30">💥 Blinder</button>
+                                <button onclick="addLightPreset('floor_par')" class="ui-subtle border border-[var(--border-color)] px-2 py-0.5 rounded hover:bg-[var(--panel-hover)]">🏮 Floor Par</button>
+                                <button onclick="addLightPreset('hazer')" class="bg-indigo-600/20 text-indigo-400 border border-indigo-500/40 px-2 py-0.5 rounded hover:bg-indigo-600/30">🌫️ Hazer</button>
+                            </div>
+                        </div>
+
+                        <div id="lightingCanvas" class="relative bg-[#010409] border border-[var(--border-color)] rounded-md h-[500px] overflow-hidden shadow-inner">
+                            <div class="absolute bottom-0 w-full text-center bg-[#1f6feb] text-white font-bold py-1 text-xs uppercase tracking-widest pointer-events-none z-0">
+                                ▼ SZÍNPAD ELEJE / KÖZÖNSÉG FELÉ ▼
+                            </div>
+                        </div>
+
+                        <!-- Floor Patch táblázat -->
+                        <div class="ui-panel border rounded-md overflow-hidden shadow-sm">
+                            <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex justify-between items-center">
+                                <h4 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-tight">💡 Floor Set Lámpapark & DMX Patch</h4>
+                                <button onclick="addLightRow()" class="px-2.5 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs no-print">+ Új Tétel</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead class="border-b border-[var(--border-color)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider ui-panel">
+                                        <tr>
+                                            <th class="px-3 py-1.5 w-14">Db</th>
+                                            <th class="px-3 py-1.5">Lámpa Megnevezése</th>
+                                            <th class="px-3 py-1.5">DMX Mód</th>
+                                            <th class="px-3 py-1.5">Universe / Start CH</th>
+                                            <th class="px-3 py-1.5">Pozíció</th>
+                                            <th class="px-3 py-1.5">Megjegyzés</th>
+                                            <th class="px-3 py-1.5 w-8 no-print text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="lightTableBody" class="divide-y divide-[var(--border-color)]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: INPUT LISTA -->
+                    <div id="tab-inputs" class="tab-content print-section hidden space-y-4">
+                        <div class="ui-panel border rounded-md overflow-hidden shadow-sm">
+                            <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex justify-between items-center">
+                                <h4 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-tight">Patchlist & Input List</h4>
+                                <button onclick="addInputRow()" class="px-2.5 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs no-print">+ Új Csatorna</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead class="border-b border-[var(--border-color)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider ui-panel">
+                                        <tr>
+                                            <th class="px-3 py-1.5 w-12">Ch</th>
+                                            <th class="px-3 py-1.5">Forrás</th>
+                                            <th class="px-3 py-1.5">Mikrofon / DI</th>
+                                            <th class="px-3 py-1.5">Állvány</th>
+                                            <th class="px-3 py-1.5 w-12 text-center">48V</th>
+                                            <th class="px-3 py-1.5 w-8 no-print text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="inputTableBody" class="divide-y divide-[var(--border-color)]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="ui-panel border rounded-md p-3 space-y-1.5 shadow-sm">
+                            <label class="block text-xs font-bold text-[var(--text-primary)] uppercase tracking-tight">📝 Technikai Megjegyzések & PA / Keverő Igények:</label>
+                            <textarea id="techNotes" onchange="saveTableData()" rows="4" class="form-control w-full rounded p-2.5 font-mono text-xs" placeholder="FOH, monitor és PA technikai specifikációk..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: CREW & FLOTTA -->
+                    <div id="tab-crew" class="tab-content print-section hidden space-y-4">
+                        <div class="ui-panel border rounded-md overflow-hidden shadow-sm">
+                            <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex justify-between items-center">
+                                <h4 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-tight">Stáblista & Személyzet</h4>
+                                <button onclick="addCrewRow()" class="px-2.5 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs no-print">+ Új Tag</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead class="border-b border-[var(--border-color)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider ui-panel">
+                                        <tr>
+                                            <th class="px-3 py-1.5">Név</th>
+                                            <th class="px-3 py-1.5">Munkakör</th>
+                                            <th class="px-3 py-1.5">Telefon</th>
+                                            <th class="px-3 py-1.5">Diéta / Allergia</th>
+                                            <th class="px-3 py-1.5 w-8 no-print text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="crewTableBody" class="divide-y divide-[var(--border-color)]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="ui-panel border rounded-md overflow-hidden shadow-sm">
+                            <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex justify-between items-center">
+                                <h4 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-tight">🚗 Turnébuszok & Gépjárművek Flotta</h4>
+                                <button onclick="addVehicleRow()" class="px-2.5 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs no-print">+ Új Jármű</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead class="border-b border-[var(--border-color)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider ui-panel">
+                                        <tr>
+                                            <th class="px-3 py-1.5">Rendszám</th>
+                                            <th class="px-3 py-1.5">Jármű Típusa</th>
+                                            <th class="px-3 py-1.5">Sofőr Neve</th>
+                                            <th class="px-3 py-1.5">Sofőr Telefonszáma</th>
+                                            <th class="px-3 py-1.5">Megjegyzés</th>
+                                            <th class="px-3 py-1.5 w-8 no-print text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="vehicleTableBody" class="divide-y divide-[var(--border-color)]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 5: CATERING -->
+                    <div id="tab-catering" class="tab-content print-section hidden space-y-4">
+                        <div class="ui-panel border rounded-md overflow-hidden shadow-sm">
+                            <div class="px-3 py-2 ui-subtle border-b border-[var(--border-color)] flex justify-between items-center">
+                                <h4 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-tight">Catering & Backstage Igények</h4>
+                                <button onclick="addCateringRow()" class="px-2.5 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs no-print">+ Új Tétel</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead class="border-b border-[var(--border-color)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider ui-panel">
+                                        <tr>
+                                            <th class="px-3 py-1.5">Tétel</th>
+                                            <th class="px-3 py-1.5">Mennyiség</th>
+                                            <th class="px-3 py-1.5">Megjegyzés</th>
+                                            <th class="px-3 py-1.5 w-8 no-print text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cateringTableBody" class="divide-y divide-[var(--border-color)]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. MODULÁRIS FIÓKBEÁLLÍTÁSOK MENÜ -->
+    <div id="profileModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-2xl h-[520px] shadow-2xl flex flex-col overflow-hidden">
+            <div class="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center ui-subtle">
+                <div class="flex items-center gap-2 text-[var(--text-primary)] font-bold uppercase tracking-wider text-xs">
+                    <i class="fa-solid fa-id-badge text-[var(--text-muted)]"></i> Felhasználói Fiókbeállítások
+                </div>
+                <button onclick="closeProfileModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-1 flex flex-row overflow-hidden">
+                <!-- Bal Fiók Menü -->
+                <div class="w-48 border-r border-[var(--border-color)] ui-subtle p-2 space-y-1 flex-shrink-0">
+                    <button onclick="switchProfileTab('general')" id="profTabBtnGeneral" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2">
+                        <i class="fa-solid fa-user-pen w-4"></i> Profil adatok
+                    </button>
+                    <button onclick="switchProfileTab('security')" id="profTabBtnSecurity" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-lock w-4"></i> Biztonság & Jelszó
+                    </button>
+                    <button onclick="switchProfileTab('sessions')" id="profTabBtnSessions" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved w-4"></i> Munkamenetek
+                    </button>
+                </div>
+
+                <!-- Jobb Fiók Tartalom -->
+                <div class="flex-1 overflow-y-auto custom-scroll p-4 text-xs">
+                    
+                    <!-- TAB: Általános adatok -->
+                    <div id="profTabGeneral" class="space-y-4">
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px] mb-2">Fiók Állapot</div>
+                            <div class="space-y-1 font-mono text-[11px]">
+                                <div class="flex justify-between"><span class="text-[var(--text-muted)]">Szerepkör:</span> <span id="profRoleDisplay" class="font-bold text-amber-500"></span></div>
+                                <div class="flex justify-between"><span class="text-[var(--text-muted)]">Elérhető adatbázisok:</span> <span id="profDbsDisplay" class="text-[var(--text-primary)]"></span></div>
+                            </div>
+                        </div>
+
+                        <form onsubmit="handleUpdateProfile(event)" class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-3">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px]">Azonosító Adatok</div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Teljes Név (megjelenített név)</label>
+                                <input type="text" id="profDisplayName" required class="form-control w-full rounded px-2.5 py-1.5 text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">E-mail cím</label>
+                                <input type="email" id="profEmail" required class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Felhasználónév (belépéshez)</label>
+                                <input type="text" id="profUsername" required class="form-control w-full rounded px-2.5 py-1.5 text-xs font-mono">
+                            </div>
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- TAB: Jelszócsere -->
+                    <div id="profTabSecurity" class="space-y-4 hidden">
+                        <form onsubmit="handleChangeOwnPw(event)" class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-3">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px]">Jelszó Módosítása</div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Jelenlegi jelszó</label>
+                                <input type="password" id="oldOwnPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                            </div>
+                            <div>
+                                <label class="block text-[var(--text-secondary)] mb-1">Új jelszó</label>
+                                <input type="password" id="newOwnPassword" required class="form-control w-full rounded px-2.5 py-1.5">
+                            </div>
+                            <div class="flex justify-end pt-2">
+                                <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Új jelszó rögzítése</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- TAB: Munkamenet info -->
+                    <div id="profTabSessions" class="space-y-4 hidden">
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                            <div class="font-bold text-[var(--text-primary)] uppercase text-[10px]">Aktív Munkamenet</div>
+                            <p class="text-[11px] text-[var(--text-secondary)]">Jelenleg erről az eszközről vagy bejelentkezve tokenhitelesítéssel.</p>
+                            <div class="p-2 ui-panel rounded border border-[var(--border-color)] font-mono text-[10px] text-emerald-500 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Hitelesített aktív munkamenet</span>
+                                <span id="profSessionIdDisplay" class="text-[var(--text-muted)] truncate max-w-xs"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. RENDSZER BEÁLLÍTÁSOK MODAL -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-[var(--text-muted)]"></i> Rendszer Beállítások
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <form onsubmit="handleSavePreferences(event)" class="space-y-4 text-xs">
+                <!-- Témaváltó -->
+                <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                    <div class="font-bold text-[var(--text-primary)] uppercase tracking-wide text-[10px] flex items-center justify-between">
+                        <span>Felületi Téma</span>
+                        <span id="activeThemeBadge" class="text-[9px] font-mono px-1.5 py-0.5 rounded ui-panel border border-[var(--border-color)]">SÖTÉT</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setAppTheme('dark')" id="themeBtnDark" class="flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-moon"></i> Sötét Mód
+                        </button>
+                        <button type="button" onclick="setAppTheme('light')" id="themeBtnLight" class="flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-sun"></i> Világos Mód
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Induló Adatbázis -->
+                <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                    <div class="font-bold text-[var(--text-primary)] uppercase tracking-wide text-[10px]">Indulási Adatbázis</div>
+                    <div>
+                        <label class="block text-[var(--text-secondary)] mb-1">Saját kezdő munkaterem:</label>
+                        <select id="prefDefaultDb" class="form-control w-full rounded px-2 py-1.5 font-mono"></select>
+                    </div>
+
+                    <div id="superadminSettingsBlock" class="hidden pt-2 border-t border-[var(--border-color)]">
+                        <label class="block text-amber-500 font-semibold mb-1">Rendszerszintű globális kezdő DB:</label>
+                        <select id="sysDefaultDb" class="form-control w-full rounded px-2 py-1.5 font-mono border-amber-500/40"></select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeSettingsModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. RENDSZER FŐADMINISZTRÁCIÓ MODAL -->
+    <div id="userAdminModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center ui-subtle">
+                <div class="flex items-center gap-2 text-amber-500 font-bold uppercase tracking-wider text-xs">
+                    <i class="fa-solid fa-shield-halved"></i> Rendszer Főadminisztrációs Központ
+                </div>
+                <button onclick="closeUserAdminModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-1 flex flex-row overflow-hidden">
+                <!-- Bal menü -->
+                <div class="w-52 border-r border-[var(--border-color)] ui-subtle p-2 space-y-1 flex-shrink-0">
+                    <button onclick="switchAdminTab('users')" id="tabBtnAdminUsers" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2">
+                        <i class="fa-solid fa-users w-4"></i> Munkatársak
+                    </button>
+                    <button onclick="switchAdminTab('roles')" id="tabBtnAdminRoles" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-user-shield w-4"></i> Szerepkörök
+                    </button>
+                    <button onclick="switchAdminTab('dbs')" id="tabBtnAdminDbs" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-database w-4"></i> Adatbázis Partíciók
+                    </button>
+                    <button onclick="switchAdminTab('requests')" id="tabBtnAdminRequests" class="w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2">
+                        <i class="fa-solid fa-code-pull-request w-4"></i> Igénylések
+                    </button>
+                </div>
+
+                <!-- Jobb tartalom -->
+                <div class="flex-1 overflow-y-auto custom-scroll p-4 text-xs">
+                    
+                    <!-- TAB: Felhasználók -->
+                    <div id="adminTabUsers" class="space-y-4">
+                        <div id="pendingUsersSection" class="hidden">
+                            <h4 class="font-bold text-amber-500 uppercase tracking-wide mb-2 text-[10px]">Jóváhagyásra Váró Regisztrációk</h4>
+                            <div id="pendingUsersContainer" class="space-y-1.5"></div>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Munkatársi Fiókok</h4>
+                            <div id="userListContainer" class="space-y-1.5"></div>
+                        </div>
+
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-3 mt-4">
+                            <h4 class="font-bold text-[var(--text-primary)] text-xs uppercase" id="userFormTitle">Munkatárs Rögzítése / Szerkesztése</h4>
+                            <form onsubmit="handleSaveUser(event)" class="space-y-3">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Teljes Név</label>
+                                        <input type="text" id="newDisplayName" required class="form-control w-full rounded px-2 py-1 text-xs">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">E-mail cím</label>
+                                        <input type="email" id="newUserEmail" class="form-control w-full rounded px-2 py-1 text-xs font-mono">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Felhasználónév (belépéshez)</label>
+                                        <input type="text" id="newUsername" required class="form-control w-full rounded px-2 py-1 text-xs font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Új jelszó megadása</label>
+                                        <input type="password" id="newPassword" class="form-control w-full rounded px-2 py-1 text-xs">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Szerepkör</label>
+                                        <select id="newRole" class="form-control w-full rounded px-2 py-1 text-xs"></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[var(--text-secondary)] mb-1">Hozzárendelt Partíciók</label>
+                                        <select id="newDbSelect" multiple class="form-control w-full rounded px-2 py-1 h-16 custom-scroll font-mono text-[11px]"></select>
+                                    </div>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-1 border-t border-[var(--border-color)]">
+                                    <button type="button" onclick="resetUserForm()" class="px-3 py-1 ui-panel text-[var(--text-secondary)] rounded border border-[var(--border-color)]">Alaphelyzet</button>
+                                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Mentés</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- TAB: Szerepkörök -->
+                    <div id="adminTabRoles" class="space-y-4 hidden">
+                        <div>
+                            <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Rendszer Szerepkörök</h4>
+                            <div id="rolesListContainer" class="space-y-2"></div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: Adatbázis Partíciók -->
+                    <div id="adminTabDbs" class="space-y-4 hidden">
+                        <div class="ui-subtle border border-[var(--border-color)] p-3 rounded space-y-2">
+                            <h4 class="font-bold text-[var(--text-primary)] text-[10px] uppercase">Új Munkatér / Partíció Létrehozása</h4>
+                            <form onsubmit="handleCreateDb(event)" class="flex gap-2">
+                                <input type="text" id="newDbNameInput" placeholder="Azonosító (pl. turne_2026)" required class="form-control flex-1 rounded px-2.5 py-1.5 font-mono">
+                                <button type="submit" class="bg-[#1f6feb] hover:bg-[#388bfd] text-white px-3 py-1.5 rounded font-medium">Létrehozás</button>
+                            </form>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Rendszer Adatbázisok</h4>
+                            <div id="dbListContainer" class="space-y-1"></div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: Igénylések -->
+                    <div id="adminTabRequests" class="space-y-4 hidden">
+                        <h4 class="font-bold text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-[10px]">Beérkezett Hozzáférési Igények</h4>
+                        <div id="dbRequestsContainer" class="space-y-1.5"></div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. ADATBÁZIS FELÜGYELET MODAL (DB ADMINOKNAK) -->
+    <div id="dbAdminModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-2xl p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-blue-500 flex items-center gap-2">
+                    <i class="fa-solid fa-database"></i> Adatbázis Felügyeleti Pult
+                </h3>
+                <button onclick="closeDbAdminModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-[var(--text-secondary)]">A felügyeleted alá tartozó partíciókra érkezett kérelmek elbírálása.</p>
+            <div class="overflow-y-auto custom-scroll pr-1 flex-1 space-y-3">
+                <div id="dbAdminRequestsContainer" class="space-y-1.5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PLOT ÁTMÁSOLÁSA MODAL -->
+    <div id="copyPlotModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]" id="copyPlotModalTitle"><i class="fa-solid fa-copy mr-1.5 text-[var(--text-muted)]"></i> Plot Átmásolása</h3>
+                <button onclick="closeCopyPlotModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-[var(--text-secondary)]">Válaszd ki a cél Rider-t a plot átmásolásához:</p>
+            <select id="targetRiderSelect" class="form-control w-full rounded px-2.5 py-1.5 font-mono text-xs"></select>
+            <div class="flex justify-between pt-2 border-t border-[var(--border-color)]">
+                <button onclick="copyPlotToNewRider()" class="px-2.5 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-primary)] rounded text-xs">+ Új Riderbe</button>
+                <div class="flex gap-2">
+                    <button onclick="closeCopyPlotModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded text-xs">Mégse</button>
+                    <button onclick="executePlotCopy()" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs">Másolás</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF EXPORT MODAL -->
+    <div id="exportPdfModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]"><i class="fa-solid fa-file-pdf text-[var(--text-muted)] mr-1.5"></i> Nyomtatási Szekciók Kiválasztása</h3>
+                <button onclick="closeExportPdfModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-2 text-xs">
+                <label class="flex items-center gap-2 cursor-pointer p-1.5 ui-subtle rounded border border-[var(--border-color)]"><input type="checkbox" id="expStageplot" checked class="rounded text-[#1f6feb]"><span>🎨 Stage Plot</span></label>
+                <label class="flex items-center gap-2 cursor-pointer p-1.5 ui-subtle rounded border border-[var(--border-color)]"><input type="checkbox" id="expLightplot" checked class="rounded text-[#1f6feb]"><span>💡 Floor Lamp Plot & Fény Patch</span></label>
+                <label class="flex items-center gap-2 cursor-pointer p-1.5 ui-subtle rounded border border-[var(--border-color)]"><input type="checkbox" id="expInputs" checked class="rounded text-[#1f6feb]"><span>🔊 Input Patchlist & PA</span></label>
+                <label class="flex items-center gap-2 cursor-pointer p-1.5 ui-subtle rounded border border-[var(--border-color)]"><input type="checkbox" id="expCrew" checked class="rounded text-[#1f6feb]"><span>👥 Stáblista & Járművek</span></label>
+                <label class="flex items-center gap-2 cursor-pointer p-1.5 ui-subtle rounded border border-[var(--border-color)]"><input type="checkbox" id="expCatering" checked class="rounded text-[#1f6feb]"><span>🍔 Catering</span></label>
+            </div>
+            <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                <button onclick="closeExportPdfModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] rounded text-xs text-[var(--text-secondary)]">Mégse</button>
+                <button onclick="triggerCustomPrint()" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white font-medium rounded text-xs">Nyomtatás / PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PARTÍCIÓ IGÉNYLŐ MODAL -->
+    <div id="requestDbModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center p-4 z-50">
+        <div class="ui-panel border border-[var(--border-light)] rounded-md w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    <i class="fa-solid fa-code-pull-request text-[var(--text-muted)] mr-1.5"></i> Hozzáférési kérelem leadása
+                </h3>
+                <button onclick="closeRequestDbModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSendDbRequest(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[var(--text-secondary)] mb-1">Cél Partíció Kiválasztása</label>
+                    <select id="availableDbSelect" class="form-control w-full rounded px-2.5 py-1.5 font-mono"></select>
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                    <button type="button" onclick="closeRequestDbModal()" class="px-3 py-1 ui-subtle border border-[var(--border-color)] text-[var(--text-secondary)] rounded">Mégse</button>
+                    <button type="submit" class="px-3 py-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded font-medium">Kérelem elküldése</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT KÓD -->
+    <script>
+        let currentDb = "default";
+        let userPermissions = { username: "", display_name: "", email: "", is_superadmin: false, role: "editor", role_name: "Szerkesztő", permissions: {}, databases: [], all_databases: [], preferred_db: "default", system_default_db: "default" };
+        let appData = { title: "Rider Manager Spektrumevents", subtitle: "Spektrum StageOps", riders: [] };
+        let currentRiderId = null;
+        let copyPlotMode = 'stage';
+        let currentSessionId = localStorage.getItem("session_id") || "";
+        let adminCacheData = null;
+
+        const PRESET_ICONS = {
+            'power_230v': `<div style="text-align:center; background:#1f6feb; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;"><span style="font-size:15px;">⚡</span><br><span style="font-size:9px;">230V Schuko</span></div>`,
+            'power_drop': `<div style="text-align:center; background:#161b22; border:1px solid #30363d; color:#e6edf3; padding:2px 6px; border-radius:4px;"><span style="font-size:12px;">🔌🔌🔌</span><br><span style="font-size:8px;">Power Drop</span></div>`,
+            'power_cee_16a': `<div style="text-align:center; background:#dc2626; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold; border:1px solid #fca5a5;"><span style="font-size:14px;">🔴 CEE 16A</span><br><span style="font-size:8px;">3-PHASE</span></div>`,
+            'power_cee_32a': `<div style="text-align:center; background:#991b1b; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold; border:2px solid #ef4444;"><span style="font-size:14px;">🔴 CEE 32A</span><br><span style="font-size:8px;">3-PHASE</span></div>`,
+            'straight_stand': `<div style="text-align:center;"><div style="font-size:18px;">🎙️</div><span style="font-size:9px;">Egyenes Állvány</span></div>`,
+            'boom_stand': `<div style="text-align:center;"><div style="font-size:17px; transform: rotate(-20deg);">🎙️╲</div><span style="font-size:9px;">Gém Állvány</span></div>`,
+            'pedalboard': `<div style="text-align:center; background:#161b22; padding:2px 5px; border-radius:4px; border:1px solid #30363d;"><span style="font-size:10px;">🎛️ 🔴 🟢 🔵</span><br><span style="font-size:8px;">Pedalboard</span></div>`,
+            'di_box': `<div style="text-align:center; background:#d97706; color:#000; padding:1px 5px; border-radius:3px; font-weight:bold; font-size:9px;">📦 DI-BOX</div>`,
+            'drums': `<div style="text-align:center;"><div style="font-size:26px;">🥁</div><span style="font-size:10px; font-weight:bold;">DOBOK</span></div>`,
+            'guitar_amp': `<div style="text-align:center; background:#161b22; border:1px solid #30363d; padding:3px; border-radius:4px;"><span style="font-size:16px;">🎸</span><br><span style="font-size:9px;">GITÁR AMP</span></div>`,
+            'bass_amp': `<div style="text-align:center; background:#161b22; border:1px solid #1f6feb; padding:3px; border-radius:4px;"><span style="font-size:16px;">🔊</span><br><span style="font-size:9px;">BASS AMP</span></div>`,
+            'wedge': `<div style="text-align:center; background:#1c2128; border-bottom:2px solid #1f6feb; padding:2px 6px;"><span style="font-size:12px;">🔊</span><br><span style="font-size:8px;">MONITOR</span></div>`,
+            'iem_monitor': `<div style="text-align:center; background:#0284c7; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold; border:1px solid #38bdf8;"><span style="font-size:13px;">🎧 IEM</span><br><span style="font-size:8px;">IN-EAR</span></div>`
+        };
+
+        const LIGHT_PRESET_ICONS = {
+            'spot_moving': `<div style="text-align:center; background:#f59e0b; color:#000; padding:3px 6px; border-radius:4px; font-weight:bold;"><span style="font-size:15px;">🔆 SPOT</span><br><span style="font-size:8px;">Moving Head</span></div>`,
+            'beam_moving': `<div style="text-align:center; background:#0284c7; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold; border:1px solid #38bdf8;"><span style="font-size:15px;">🔦 BEAM</span><br><span style="font-size:8px;">Sharp Beam</span></div>`,
+            'wash_moving': `<div style="text-align:center; background:#059669; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold;"><span style="font-size:15px;">🌈 WASH</span><br><span style="font-size:8px;">RGBW Wash</span></div>`,
+            'led_bar': `<div style="text-align:center; background:#7c3aed; color:#fff; padding:2px 8px; border-radius:3px; font-weight:bold; border:1px solid #a78bfa;"><span style="font-size:11px;">🚥 PIXEL BAR</span></div>`,
+            'strobe': `<div style="text-align:center; background:#e2e8f0; color:#000; padding:3px 6px; border-radius:4px; font-weight:bold; border:2px solid #38bdf8;"><span style="font-size:14px;">⚡ STROBE</span><br><span style="font-size:8px;">ATOMIC / JDC1</span></div>`,
+            'blinder': `<div style="text-align:center; background:#ea580c; color:#fff; padding:3px 6px; border-radius:4px; font-weight:bold;"><span style="font-size:13px;">💥 BLINDER</span><br><span style="font-size:8px;">2/4-LITE MOLE</span></div>`,
+            'floor_par': `<div style="text-align:center; background:#334155; color:#fff; padding:2px 6px; border-radius:4px; border:1px solid #94a3b8;"><span style="font-size:13px;">🏮 PAR</span><br><span style="font-size:8px;">Floor Uplight</span></div>`,
+            'hazer': `<div style="text-align:center; background:#4f46e5; color:#fff; padding:2px 6px; border-radius:4px;"><span style="font-size:13px;">🌫️ HAZER</span><br><span style="font-size:8px;">Touring Hazer</span></div>`
+        };
+
+        /* TÉMAKEZELÉS */
+        function initTheme() {
+            const savedTheme = localStorage.getItem("rider_theme") || "dark";
+            setAppTheme(savedTheme, false);
+        }
+
+        function setAppTheme(theme, save = true) {
+            const isLight = (theme === 'light');
+            if (isLight) {
+                document.body.classList.add('theme-light');
+            } else {
+                document.body.classList.remove('theme-light');
+            }
+            if (save) localStorage.setItem("rider_theme", theme);
+
+            const badge = document.getElementById("activeThemeBadge");
+            if (badge) badge.innerText = isLight ? "VILÁGOS" : "SÖTÉT";
+
+            const btnDark = document.getElementById("themeBtnDark");
+            const btnLight = document.getElementById("themeBtnLight");
+            if (btnDark && btnLight) {
+                if (isLight) {
+                    btnLight.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 bg-[#0969da] text-white border-transparent";
+                    btnDark.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 ui-panel border-[var(--border-color)] text-[var(--text-secondary)]";
+                } else {
+                    btnDark.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 bg-[#1f6feb] text-white border-transparent";
+                    btnLight.className = "flex-1 py-2 px-3 rounded border font-semibold flex items-center justify-center gap-2 ui-panel border-[var(--border-color)] text-[var(--text-secondary)]";
+                }
+            }
+        }
+
+        /* SIDEBAR TOGGLE */
+        function toggleSidebar() {
+            const sidebar = document.getElementById("mainSidebar");
+            const backdrop = document.getElementById("sidebarBackdrop");
+            const isMobile = window.innerWidth < 768;
+
+            if (isMobile) {
+                const isOpen = sidebar.classList.contains("sidebar-mobile-open");
+                if (isOpen) {
+                    sidebar.classList.remove("sidebar-mobile-open");
+                    backdrop.classList.add("hidden");
+                } else {
+                    sidebar.classList.add("sidebar-mobile-open");
+                    backdrop.classList.remove("hidden");
+                }
+            } else {
+                const isCollapsed = sidebar.classList.toggle("sidebar-collapsed");
+                localStorage.setItem("rider_sidebar_collapsed", isCollapsed ? "1" : "0");
+            }
+        }
+
+        function restoreSidebarState() {
+            if (window.innerWidth >= 768) {
+                const isCollapsed = localStorage.getItem("rider_sidebar_collapsed") === "1";
+                if (isCollapsed) document.getElementById("mainSidebar").classList.add("sidebar-collapsed");
+            }
+        }
+
+        async function authFetch(url, options = {}) {
+            options.headers = options.headers || {};
+            if (currentSessionId) {
+                options.headers['Authorization'] = `Bearer ${currentSessionId}`;
+            }
+            return fetch(url, options);
+        }
+
+        function togglePasswordVisibility(inputId, iconId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(iconId);
+            if (input.type === "password") {
+                input.type = "text";
+                icon.classList.remove("fa-eye");
+                icon.classList.add("fa-eye-slash");
+            } else {
+                input.type = "password";
+                icon.classList.remove("fa-eye-slash");
+                icon.classList.add("fa-eye");
+            }
+        }
+
+        function toggleAuthMode(mode) {
+            if (mode === 'register') {
+                document.getElementById("loginForm").classList.add("hidden");
+                document.getElementById("registerForm").classList.remove("hidden");
+                document.getElementById("authSubtitle").innerText = "Új hozzáférési kérelem";
+            } else {
+                document.getElementById("registerForm").classList.add("hidden");
+                document.getElementById("loginForm").classList.remove("hidden");
+                document.getElementById("authSubtitle").innerText = "Rendszer hitelesítés";
+            }
+        }
+
+        function checkPasswordResetTokenInUrl() {
+            const hash = window.location.hash;
+            if (hash.includes('reset-token=')) {
+                const token = hash.split('reset-token=')[1].split('&')[0];
+                if (token) {
+                    document.getElementById("resetTokenValue").value = token;
+                    document.getElementById("resetPwModal").classList.remove("hidden");
+                    document.getElementById("resetPwModal").classList.add("flex");
+                }
+            }
+        }
+
+        function openForgotPwModal() {
+            document.getElementById("forgotIdentifier").value = "";
+            document.getElementById("forgotMsg").classList.add("hidden");
+            document.getElementById("forgotPwModal").classList.remove("hidden");
+            document.getElementById("forgotPwModal").classList.add("flex");
+        }
+        function closeForgotPwModal() {
+            document.getElementById("forgotPwModal").classList.add("hidden");
+            document.getElementById("forgotPwModal").classList.remove("flex");
+        }
+
+        async function handleSendForgotPassword(e) {
+            e.preventDefault();
+            const idVal = document.getElementById("forgotIdentifier").value.trim();
+            const msgEl = document.getElementById("forgotMsg");
+
+            try {
+                const res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: idVal })
+                });
+                const data = await res.json();
+                msgEl.className = "text-[11px] text-emerald-500 font-mono";
+                msgEl.innerText = data.message || "Link elküldve!";
+                msgEl.classList.remove("hidden");
+            } catch (err) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "Kommunikációs hiba a szerverrel!";
+                msgEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleExecutePasswordReset(e) {
+            e.preventDefault();
+            const token = document.getElementById("resetTokenValue").value;
+            const p1 = document.getElementById("resetNewPassword").value;
+            const p2 = document.getElementById("resetConfirmPassword").value;
+            const msgEl = document.getElementById("resetMsg");
+
+            if (p1 !== p2) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "A két új jelszó nem egyezik meg!";
+                msgEl.classList.remove("hidden");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, new_password: p1 })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || "Jelszó megváltoztatva! Most már bejelentkezhetsz.");
+                    window.location.hash = "";
+                    document.getElementById("resetPwModal").classList.add("hidden");
+                    document.getElementById("resetPwModal").classList.remove("flex");
+                    checkAuth();
+                } else {
+                    msgEl.className = "text-[11px] text-rose-500 font-mono";
+                    msgEl.innerText = data.error || "Hiba a visszaállítás során!";
+                    msgEl.classList.remove("hidden");
+                }
+            } catch (err) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "Szerver kapcsolódási hiba!";
+                msgEl.classList.remove("hidden");
+            }
+        }
+
+        async function checkAuth() {
+            try {
+                const res = await authFetch('/api/auth/check');
+                const data = await res.json();
+                if (data.authenticated) {
+                    document.getElementById("loginScreen").classList.add("hidden");
+                    document.getElementById("appScreen").classList.remove("hidden");
+                    document.getElementById("appScreen").classList.add("flex");
+                    await loadUserInfo();
+                } else {
+                    document.getElementById("loginScreen").classList.remove("hidden");
+                    document.getElementById("appScreen").classList.add("hidden");
+                }
+            } catch (err) {
+                console.error("Auth hiba:", err);
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById("loginUsername").value;
+            const p = document.getElementById("loginPassword").value;
+            const errEl = document.getElementById("loginError");
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    if (data.session_id) {
+                        currentSessionId = data.session_id;
+                        localStorage.setItem("session_id", data.session_id);
+                    }
+                    errEl.classList.add("hidden");
+                    checkAuth();
+                } else {
+                    errEl.innerText = data.error || "Sikertelen azonosítás!";
+                    errEl.classList.remove("hidden");
+                }
+            } catch (err) {
+                errEl.innerText = "Hálózati hiba a szerver felé!";
+                errEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const u = document.getElementById("regUsername").value;
+            const disp = document.getElementById("regDisplayName").value;
+            const email = document.getElementById("regEmail").value;
+            const p = document.getElementById("regPassword").value;
+            const msgEl = document.getElementById("regMsg");
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, display_name: disp, email: email, password: p })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    msgEl.className = "text-[11px] text-emerald-500 font-mono";
+                    msgEl.innerText = data.message;
+                    msgEl.classList.remove("hidden");
+                } else {
+                    msgEl.className = "text-[11px] text-rose-500 font-mono";
+                    msgEl.innerText = data.error || "Regisztrációs hiba!";
+                    msgEl.classList.remove("hidden");
+                }
+            } catch (err) {
+                msgEl.className = "text-[11px] text-rose-500 font-mono";
+                msgEl.innerText = "Kommunikációs hiba!";
+                msgEl.classList.remove("hidden");
+            }
+        }
+
+        async function handleLogout() {
+            await authFetch('/api/auth/logout', { method: 'POST' });
+            localStorage.removeItem("session_id");
+            window.location.reload();
+        }
+
+        async function loadUserInfo() {
+            const res = await authFetch('/api/user/info');
+            userPermissions = await res.json();
+
+            const displayName = userPermissions.display_name || userPermissions.username;
+            document.getElementById("headerDisplayName").innerText = displayName;
+            document.getElementById("headerUsername").innerText = userPermissions.username;
+            document.getElementById("userAvatarLetter").innerText = displayName.charAt(0).toUpperCase();
+            document.getElementById("headerRoleBadge").innerText = userPermissions.is_superadmin ? "FŐADMIN" : (userPermissions.role_name || userPermissions.role).toUpperCase();
+
+            const perms = userPermissions.permissions || {};
+            const isSuper = userPermissions.is_superadmin;
+
+            if (isSuper || perms.can_access_admin) {
+                document.getElementById("adminUserBtn").classList.remove("hidden");
+                document.getElementById("adminUserBtn").classList.add("flex");
+            } else {
+                document.getElementById("adminUserBtn").classList.add("hidden");
+            }
+
+            if (!isSuper && perms.can_manage_dbs) {
+                document.getElementById("dbAdminBtn").classList.remove("hidden");
+                document.getElementById("dbAdminBtn").classList.add("flex");
+            } else {
+                document.getElementById("dbAdminBtn").classList.add("hidden");
+            }
+
+            const dbSelect = document.getElementById("dbSelector");
+            dbSelect.innerHTML = "";
+            userPermissions.databases.forEach(db => {
+                const opt = document.createElement("option");
+                opt.value = db;
+                opt.innerText = db.replace("_", " ").toUpperCase();
+                dbSelect.appendChild(opt);
+            });
+
+            if (userPermissions.databases.length > 0) {
+                currentDb = userPermissions.databases.includes(userPermissions.preferred_db) ? userPermissions.preferred_db : userPermissions.databases[0];
+                dbSelect.value = currentDb;
+            }
+
+            loadData();
+        }
+
+        async function switchDatabase(dbName) {
+            currentDb = dbName;
+            currentRiderId = null;
+            loadData();
+        }
+
+        async function loadData() {
+            try {
+                const res = await authFetch(`/api/data?db=${currentDb}&_t=${Date.now()}`);
+                appData = await res.json();
+                if (!appData.riders) appData.riders = [];
+                render();
+            } catch (err) {
+                console.error("Adatbetöltési hiba:", err);
+            }
+        }
+
+        async function saveData() {
+            const perms = userPermissions.permissions || {};
+            if (!userPermissions.is_superadmin && perms.can_edit_riders === false) {
+                alert("Nincs szerkesztési jogosultságod ehhez a munkatérhez!");
+                return;
+            }
+
+            try {
+                const res = await authFetch(`/api/data?db=${currentDb}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(appData, null, 2)
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.error || "Mentési hiba!");
+                    return;
+                }
+                render();
+            } catch (err) {
+                alert("Mentési hiba a szerveren!");
+            }
+        }
+
+        function render() {
+            document.getElementById("appTitleDisplay").innerText = appData.title || "Rider Manager";
+            document.getElementById("appSubtitleDisplay").innerText = appData.subtitle || "Spektrum StageOps";
+
+            // Metrikák frissítése
+            document.getElementById("statTotalRiders").innerText = appData.riders.length;
+
+            let stageCount = 0;
+            let lightCount = 0;
+            let inputCount = 0;
+
+            const listEl = document.getElementById("riderList");
+            listEl.innerHTML = "";
+
+            if (appData.riders.length === 0) {
+                listEl.innerHTML = `<p class="text-[11px] text-[var(--text-muted)] font-mono italic p-2">Nincs létrehozott rider.</p>`;
+            }
+
+            appData.riders.forEach(r => {
+                const isSelected = (currentRiderId === r.id);
+                if (isSelected) {
+                    stageCount = (r.stageElements || []).length;
+                    lightCount = (r.lightElements || []).length + (r.lighting || []).reduce((acc, curr) => acc + (parseInt(curr.qty) || 1), 0);
+                    inputCount = (r.inputs || []).length;
+                }
+
+                const btn = document.createElement("button");
+                btn.onclick = () => selectRider(r.id);
+                btn.className = `w-full text-left px-2.5 py-1.5 rounded text-xs transition flex items-center justify-between ${isSelected ? 'bg-[#1f6feb] text-white font-bold' : 'ui-subtle text-[var(--text-secondary)] hover:bg-[var(--panel-hover)] hover:text-[var(--text-primary)] border border-[var(--border-color)]'}`;
+                btn.innerHTML = `
+                    <span class="truncate flex items-center gap-1.5"><i class="fa-solid fa-guitar text-[10px]"></i> ${esc(r.title)}</span>
+                    <span class="text-[10px] font-mono opacity-80">${esc((r.stageElements || []).length)} el.</span>
+                `;
+                listEl.appendChild(btn);
+            });
+
+            document.getElementById("statStageItems").innerText = stageCount;
+            document.getElementById("statLightItems").innerText = lightCount;
+            document.getElementById("statInputs").innerText = inputCount;
+
+            if (currentRiderId) {
+                const r = appData.riders.find(item => item.id === currentRiderId);
+                if (r) {
+                    document.getElementById("noRiderSelected").classList.add("hidden");
+                    document.getElementById("riderEditor").classList.remove("hidden");
+                    document.getElementById("riderTitle").value = r.title;
+                    document.getElementById("currentRiderHeaderBadge").innerText = r.title;
+                    document.getElementById("techNotes").value = r.techNotes || "";
+                    renderTables(r);
+                    renderStagePlot(r);
+                    renderLightingPlot(r);
+                    return;
+                }
+            }
+
+            document.getElementById("currentRiderHeaderBadge").innerText = "Nincs kiválasztva";
+            document.getElementById("noRiderSelected").classList.remove("hidden");
+            document.getElementById("riderEditor").classList.add("hidden");
+        }
+
+        function createNewRider() {
+            const title = prompt("Új Rider megnevezése:", "Új Rider");
+            if (!title) return;
+            const newRider = {
+                id: "r_" + Date.now(),
+                title: title,
+                techNotes: "",
+                stageElements: [],
+                lightElements: [],
+                lighting: [],
+                inputs: [],
+                crew: [],
+                vehicles: [],
+                catering: []
+            };
+            appData.riders.push(newRider);
+            currentRiderId = newRider.id;
+            saveData();
+        }
+
+        function duplicateEntireRider() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            const newTitle = prompt("Klónozott Rider új neve:", r.title + " (Másolat)");
+            if (!newTitle) return;
+
+            const cloned = JSON.parse(JSON.stringify(r));
+            cloned.id = "r_" + Date.now();
+            cloned.title = newTitle;
+            appData.riders.push(cloned);
+            currentRiderId = cloned.id;
+            saveData();
+        }
+
+        function selectRider(id) {
+            currentRiderId = id;
+            render();
+        }
+
+        function deleteRider() {
+            if (!currentRiderId) return;
+            if (confirm("BIZTOSAN TÖRÖLNI SZERETNÉD EZT A RIDER-T?")) {
+                appData.riders = appData.riders.filter(r => r.id !== currentRiderId);
+                currentRiderId = null;
+                saveData();
+            }
+        }
+
+        function updateRiderHeader() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (r) {
+                r.title = document.getElementById("riderTitle").value;
+                document.getElementById("currentRiderHeaderBadge").innerText = r.title;
+            }
+        }
+
+        async function editTitle() {
+            const newTitle = prompt("Új főcím:", appData.title);
+            if (newTitle) {
+                appData.title = newTitle;
+                await saveData();
+            }
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"));
+            document.querySelectorAll(".tab-btn").forEach(el => {
+                el.className = "tab-btn py-1.5 px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded flex items-center gap-1.5 whitespace-nowrap";
+            });
+
+            document.getElementById(`tab-${tabName}`).classList.remove("hidden");
+            const activeBtn = document.getElementById(`tabBtn-${tabName}`);
+            activeBtn.className = "tab-btn py-1.5 px-3 text-white bg-[#1f6feb] rounded flex items-center gap-1.5 whitespace-nowrap";
+        }
+
+        // ================= STAGE PLOT LOGIC =================
+        function addStagePreset(presetKey) {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.stageElements) r.stageElements = [];
+
+            r.stageElements.push({
+                id: Date.now(),
+                presetKey: presetKey,
+                x: 80 + Math.random() * 200,
+                y: 80 + Math.random() * 150
+            });
+            renderStagePlot(r);
+        }
+
+        function clearStagePlot() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (r && confirm("Törölni akarod az összes elemet a színpadról?")) {
+                r.stageElements = [];
+                renderStagePlot(r);
+            }
+        }
+
+        function renderStagePlot(rider) {
+            const canvas = document.getElementById("stageCanvas");
+            if (!canvas) return;
+            canvas.querySelectorAll(".stage-item").forEach(e => e.remove());
+
+            (rider.stageElements || []).forEach(item => {
+                const div = document.createElement("div");
+                div.className = "stage-item absolute p-1.5 rounded ui-panel border border-[var(--border-color)] shadow-lg text-[var(--text-primary)] select-none z-10";
+                div.style.left = item.x + "px";
+                div.style.top = item.y + "px";
+
+                let contentHTML = `<div class="text-right no-print"><span onclick="removeStageElement(${Number(item.id) || 0})" class="text-rose-500 font-bold hover:text-rose-400 cursor-pointer text-xs">&times;</span></div>`;
+                if (item.presetKey && PRESET_ICONS[item.presetKey]) contentHTML += PRESET_ICONS[item.presetKey];
+                div.innerHTML = contentHTML;
+
+                let isDragging = false;
+                let offsetX, offsetY;
+
+                div.addEventListener("mousedown", (e) => {
+                    isDragging = true;
+                    offsetX = e.clientX - div.offsetLeft;
+                    offsetY = e.clientY - div.offsetTop;
+                    div.style.zIndex = "100";
+                });
+
+                document.addEventListener("mousemove", (e) => {
+                    if (isDragging) {
+                        item.x = e.clientX - offsetX;
+                        item.y = e.clientY - offsetY;
+                        div.style.left = item.x + "px";
+                        div.style.top = item.y + "px";
+                    }
+                });
+
+                document.addEventListener("mouseup", () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        div.style.zIndex = "10";
+                    }
+                });
+
+                canvas.appendChild(div);
+            });
+        }
+
+        function removeStageElement(id) {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (r) {
+                r.stageElements = r.stageElements.filter(e => e.id !== id);
+                renderStagePlot(r);
+            }
+        }
+
+        // ================= LIGHT / FLOOR PLOT LOGIC =================
+        function addLightPreset(presetKey) {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.lightElements) r.lightElements = [];
+
+            r.lightElements.push({
+                id: Date.now(),
+                presetKey: presetKey,
+                x: 80 + Math.random() * 200,
+                y: 80 + Math.random() * 150
+            });
+            renderLightingPlot(r);
+        }
+
+        function clearLightPlot() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (r && confirm("Törölni akarod az összes fénytechnikai elemet?")) {
+                r.lightElements = [];
+                renderLightingPlot(r);
+            }
+        }
+
+        function renderLightingPlot(rider) {
+            const canvas = document.getElementById("lightingCanvas");
+            if (!canvas) return;
+            canvas.querySelectorAll(".stage-item").forEach(e => e.remove());
+
+            (rider.lightElements || []).forEach(item => {
+                const div = document.createElement("div");
+                div.className = "stage-item absolute p-1.5 rounded ui-panel border border-[var(--border-color)] shadow-lg text-[var(--text-primary)] select-none z-10";
+                div.style.left = item.x + "px";
+                div.style.top = item.y + "px";
+
+                let contentHTML = `<div class="text-right no-print"><span onclick="removeLightElement(${Number(item.id) || 0})" class="text-rose-500 font-bold hover:text-rose-400 cursor-pointer text-xs">&times;</span></div>`;
+                if (item.presetKey && LIGHT_PRESET_ICONS[item.presetKey]) contentHTML += LIGHT_PRESET_ICONS[item.presetKey];
+                div.innerHTML = contentHTML;
+
+                let isDragging = false;
+                let offsetX, offsetY;
+
+                div.addEventListener("mousedown", (e) => {
+                    isDragging = true;
+                    offsetX = e.clientX - div.offsetLeft;
+                    offsetY = e.clientY - div.offsetTop;
+                    div.style.zIndex = "100";
+                });
+
+                document.addEventListener("mousemove", (e) => {
+                    if (isDragging) {
+                        item.x = e.clientX - offsetX;
+                        item.y = e.clientY - offsetY;
+                        div.style.left = item.x + "px";
+                        div.style.top = item.y + "px";
+                    }
+                });
+
+                document.addEventListener("mouseup", () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        div.style.zIndex = "10";
+                    }
+                });
+
+                canvas.appendChild(div);
+            });
+        }
+
+        function removeLightElement(id) {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (r) {
+                r.lightElements = r.lightElements.filter(e => e.id !== id);
+                renderLightingPlot(r);
+            }
+        }
+
+        // ================= PLOT ÁTMÁSOLÁSA =================
+        function openCopyPlotModal(mode = 'stage') {
+            copyPlotMode = mode;
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+
+            document.getElementById("copyPlotModalTitle").innerHTML = mode === 'stage' 
+                ? `<i class="fa-solid fa-copy text-[var(--text-muted)] mr-1.5"></i> Stage Plot Átmásolása`
+                : `<i class="fa-solid fa-lightbulb text-[var(--text-muted)] mr-1.5"></i> Floor Lamp Plot Átmásolása`;
+
+            const select = document.getElementById("targetRiderSelect");
+            select.innerHTML = "";
+            appData.riders.filter(item => item.id !== currentRiderId).forEach(other => {
+                const opt = document.createElement("option");
+                opt.value = other.id;
+                opt.innerText = other.title;
+                select.appendChild(opt);
+            });
+
+            document.getElementById("copyPlotModal").classList.remove("hidden");
+            document.getElementById("copyPlotModal").classList.add("flex");
+        }
+
+        function closeCopyPlotModal() {
+            document.getElementById("copyPlotModal").classList.add("hidden");
+            document.getElementById("copyPlotModal").classList.remove("flex");
+        }
+
+        function executePlotCopy() {
+            const targetId = document.getElementById("targetRiderSelect").value;
+            const sourceRider = appData.riders.find(r => r.id === currentRiderId);
+            const targetRider = appData.riders.find(r => r.id === targetId);
+
+            if (!sourceRider || !targetRider) return;
+
+            if (copyPlotMode === 'stage') {
+                targetRider.stageElements = JSON.parse(JSON.stringify(sourceRider.stageElements || []));
+            } else {
+                targetRider.lightElements = JSON.parse(JSON.stringify(sourceRider.lightElements || []));
+                targetRider.lighting = JSON.parse(JSON.stringify(sourceRider.lighting || []));
+            }
+
+            alert("Plot sikeresen átmásolva!");
+            closeCopyPlotModal();
+            saveData();
+        }
+
+        function copyPlotToNewRider() {
+            const sourceRider = appData.riders.find(r => r.id === currentRiderId);
+            if (!sourceRider) return;
+
+            const newTitle = prompt("Új Rider megnevezése az átmásolt plothoz:", sourceRider.title + " (Másolat)");
+            if (!newTitle) return;
+
+            const newRider = {
+                id: "r_" + Date.now(),
+                title: newTitle,
+                techNotes: "",
+                stageElements: copyPlotMode === 'stage' ? JSON.parse(JSON.stringify(sourceRider.stageElements || [])) : [],
+                lightElements: copyPlotMode === 'light' ? JSON.parse(JSON.stringify(sourceRider.lightElements || [])) : [],
+                lighting: copyPlotMode === 'light' ? JSON.parse(JSON.stringify(sourceRider.lighting || [])) : [],
+                inputs: [],
+                crew: [],
+                vehicles: [],
+                catering: []
+            };
+
+            appData.riders.push(newRider);
+            currentRiderId = newRider.id;
+            closeCopyPlotModal();
+            saveData();
+        }
+
+        // ================= TÁBLÁZATOK =================
+        function renderTables(rider) {
+            const inBody = document.getElementById("inputTableBody");
+            inBody.innerHTML = "";
+            (rider.inputs || []).forEach((inp, i) => {
+                inBody.innerHTML += `<tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition">
+                    <td class="px-3 py-1.5 font-bold font-mono text-[var(--accent-blue)]">${esc(i+1)}</td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(inp.source||'')}" placeholder="Forrás" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(inp.mic||'')}" placeholder="Mikrofon / DI" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5">
+                        <select class="form-control rounded px-2 py-1 w-full cursor-pointer" onchange="saveTableData()">
+                            <option value="Nagy gémes" ${esc(inp.stand==='Nagy gémes'?'selected':'')}>🎙️ Nagy gémes állvány</option>
+                            <option value="Kis gémes" ${esc(inp.stand==='Kis gémes'?'selected':'')}>🥁 Kis gémes állvány</option>
+                            <option value="Egyenes" ${esc(inp.stand==='Egyenes'?'selected':'')}>🎤 Egyenes állvány</option>
+                            <option value="Nincs" ${esc(inp.stand==='Nincs'?'selected':'')}>❌ Nincs</option>
+                        </select>
+                    </td>
+                    <td class="px-3 py-1.5 text-center"><input type="checkbox" ${esc(inp.p48?'checked':'')} onchange="saveTableData()" class="rounded text-[#1f6feb]"></td>
+                    <td class="px-3 py-1.5 no-print text-right"><button onclick="this.closest('tr').remove(); saveTableData();" class="text-[var(--text-muted)] hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></td>
+                </tr>`;
+            });
+
+            const lightBody = document.getElementById("lightTableBody");
+            lightBody.innerHTML = "";
+            (rider.lighting || []).forEach((lit) => {
+                lightBody.innerHTML += `<tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition">
+                    <td class="px-3 py-1.5"><input type="number" class="form-control rounded px-2 py-1 w-full text-center font-bold font-mono" value="${esc(lit.qty||1)}" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(lit.fixture||'')}" placeholder="Lámpa típusa" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(lit.mode||'')}" placeholder="DMX mód" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full font-mono text-[var(--accent-blue)]" value="${esc(lit.address||'')}" placeholder="Univ / CH" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(lit.pos||'')}" placeholder="Pozíció" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(lit.notes||'')}" placeholder="Megjegyzés" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5 no-print text-right"><button onclick="this.closest('tr').remove(); saveTableData();" class="text-[var(--text-muted)] hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></td>
+                </tr>`;
+            });
+
+            const crewBody = document.getElementById("crewTableBody");
+            crewBody.innerHTML = "";
+            (rider.crew || []).forEach((c) => {
+                crewBody.innerHTML += `<tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition">
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(c.name||'')}" placeholder="Név" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(c.role||'')}" placeholder="Munkakör" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full font-mono" value="${esc(c.phone||'')}" placeholder="+36..." onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(c.diet||'')}" placeholder="Diéta / Megjegyzés" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5 no-print text-right"><button onclick="this.closest('tr').remove(); saveTableData();" class="text-[var(--text-muted)] hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></td>
+                </tr>`;
+            });
+
+            const vehicleBody = document.getElementById("vehicleTableBody");
+            vehicleBody.innerHTML = "";
+            (rider.vehicles || []).forEach((v) => {
+                vehicleBody.innerHTML += `<tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition">
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full font-mono font-bold" value="${esc(v.plate||'')}" placeholder="ABC-123" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(v.type||'')}" placeholder="Jármű típusa" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(v.driver||'')}" placeholder="Sofőr neve" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full font-mono" value="${esc(v.phone||'')}" placeholder="Telefonszám" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(v.notes||'')}" placeholder="Megjegyzés" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5 no-print text-right"><button onclick="this.closest('tr').remove(); saveTableData();" class="text-[var(--text-muted)] hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></td>
+                </tr>`;
+            });
+
+            const catBody = document.getElementById("cateringTableBody");
+            catBody.innerHTML = "";
+            (rider.catering || []).forEach((cat) => {
+                catBody.innerHTML += `<tr class="border-b border-[var(--border-color)] hover:bg-[var(--panel-hover)] transition">
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(cat.item||'')}" placeholder="Tétel" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(cat.qty||'')}" placeholder="Mennyiség" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5"><input class="form-control rounded px-2 py-1 w-full" value="${esc(cat.notes||'')}" placeholder="Megjegyzés" onchange="saveTableData()"></td>
+                    <td class="px-3 py-1.5 no-print text-right"><button onclick="this.closest('tr').remove(); saveTableData();" class="text-[var(--text-muted)] hover:text-rose-500"><i class="fa-solid fa-trash"></i></button></td>
+                </tr>`;
+            });
+        }
+
+        function addInputRow() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.inputs) r.inputs = [];
+            r.inputs.push({ source: "", mic: "", stand: "Nagy gémes", p48: false });
+            renderTables(r);
+        }
+
+        function addLightRow() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.lighting) r.lighting = [];
+            r.lighting.push({ qty: 2, fixture: "", mode: "Standard", address: "", pos: "Floor", notes: "" });
+            renderTables(r);
+        }
+
+        function addCrewRow() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.crew) r.crew = [];
+            r.crew.push({ name: "", role: "", phone: "", diet: "" });
+            renderTables(r);
+        }
+
+        function addVehicleRow() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.vehicles) r.vehicles = [];
+            r.vehicles.push({ plate: "", type: "", driver: "", phone: "", notes: "" });
+            renderTables(r);
+        }
+
+        function addCateringRow() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+            if (!r.catering) r.catering = [];
+            r.catering.push({ item: "", qty: "", notes: "" });
+            renderTables(r);
+        }
+
+        function saveTableData() {
+            const r = appData.riders.find(item => item.id === currentRiderId);
+            if (!r) return;
+
+            r.techNotes = document.getElementById("techNotes").value;
+
+            const inputs = [];
+            document.querySelectorAll("#inputTableBody tr").forEach(row => {
+                const inputsEl = row.querySelectorAll("input");
+                const selectEl = row.querySelector("select");
+                if (inputsEl.length >= 2 && selectEl) {
+                    inputs.push({ source: inputsEl[0].value, mic: inputsEl[1].value, stand: selectEl.value, p48: inputsEl[2].checked });
+                }
+            });
+            r.inputs = inputs;
+
+            const lighting = [];
+            document.querySelectorAll("#lightTableBody tr").forEach(row => {
+                const inputsEl = row.querySelectorAll("input");
+                if (inputsEl.length >= 5) {
+                    lighting.push({ qty: inputsEl[0].value, fixture: inputsEl[1].value, mode: inputsEl[2].value, address: inputsEl[3].value, pos: inputsEl[4].value, notes: inputsEl[5]?.value||"" });
+                }
+            });
+            r.lighting = lighting;
+
+            const crew = [];
+            document.querySelectorAll("#crewTableBody tr").forEach(row => {
+                const inputsEl = row.querySelectorAll("input");
+                if (inputsEl.length >= 4) {
+                    crew.push({ name: inputsEl[0].value, role: inputsEl[1].value, phone: inputsEl[2].value, diet: inputsEl[3].value });
+                }
+            });
+            r.crew = crew;
+
+            const vehicles = [];
+            document.querySelectorAll("#vehicleTableBody tr").forEach(row => {
+                const inputsEl = row.querySelectorAll("input");
+                if (inputsEl.length >= 5) {
+                    vehicles.push({ plate: inputsEl[0].value, type: inputsEl[1].value, driver: inputsEl[2].value, phone: inputsEl[3].value, notes: inputsEl[4].value });
+                }
+            });
+            r.vehicles = vehicles;
+
+            const catering = [];
+            document.querySelectorAll("#cateringTableBody tr").forEach(row => {
+                const inputsEl = row.querySelectorAll("input");
+                if (inputsEl.length >= 3) {
+                    catering.push({ item: inputsEl[0].value, qty: inputsEl[1].value, notes: inputsEl[2].value });
+                }
+            });
+            r.catering = catering;
+        }
+
+        // ================= PDF EXPORT =================
+        function openExportPdfModal() {
+            document.getElementById("exportPdfModal").classList.remove("hidden");
+            document.getElementById("exportPdfModal").classList.add("flex");
+        }
+        function closeExportPdfModal() {
+            document.getElementById("exportPdfModal").classList.add("hidden");
+            document.getElementById("exportPdfModal").classList.remove("flex");
+        }
+
+        function triggerCustomPrint() {
+            const showStage = document.getElementById("expStageplot").checked;
+            const showLight = document.getElementById("expLightplot").checked;
+            const showInputs = document.getElementById("expInputs").checked;
+            const showCrew = document.getElementById("expCrew").checked;
+            const showCatering = document.getElementById("expCatering").checked;
+
+            document.getElementById("tab-stageplot").style.display = showStage ? "block" : "none";
+            document.getElementById("tab-lamp-plot").style.display = showLight ? "block" : "none";
+            document.getElementById("tab-inputs").style.display = showInputs ? "block" : "none";
+            document.getElementById("tab-crew").style.display = showCrew ? "block" : "none";
+            document.getElementById("tab-catering").style.display = showCatering ? "block" : "none";
+
+            closeExportPdfModal();
+            window.print();
+
+            setTimeout(() => {
+                document.getElementById("tab-stageplot").style.display = "";
+                document.getElementById("tab-lamp-plot").style.display = "";
+                document.getElementById("tab-inputs").style.display = "";
+                document.getElementById("tab-crew").style.display = "";
+                document.getElementById("tab-catering").style.display = "";
+                switchTab('stageplot');
+            }, 1000);
+        }
+
+        // ================= SAJÁT FIÓK & PROFIL =================
+        function openProfileModal() {
+            document.getElementById("profUsername").value = userPermissions.username || "";
+            document.getElementById("profDisplayName").value = userPermissions.display_name || userPermissions.username;
+            document.getElementById("profEmail").value = userPermissions.email || "";
+
+            document.getElementById("profRoleDisplay").innerText = userPermissions.is_superadmin ? "Főadminisztrátor" : (userPermissions.role_name || userPermissions.role);
+            document.getElementById("profDbsDisplay").innerText = (userPermissions.databases || []).join(", ") || "default";
+            document.getElementById("profSessionIdDisplay").innerText = currentSessionId || "N/A";
+
+            document.getElementById("oldOwnPassword").value = "";
+            document.getElementById("newOwnPassword").value = "";
+
+            switchProfileTab('general');
+            document.getElementById("profileModal").classList.remove("hidden");
+            document.getElementById("profileModal").classList.add("flex");
+        }
+
+        function closeProfileModal() {
+            document.getElementById("profileModal").classList.add("hidden");
+            document.getElementById("profileModal").classList.remove("flex");
+        }
+
+        function switchProfileTab(tab) {
+            document.getElementById("profTabGeneral").classList.add("hidden");
+            document.getElementById("profTabSecurity").classList.add("hidden");
+            document.getElementById("profTabSessions").classList.add("hidden");
+
+            const defClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2";
+            const actClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2";
+
+            document.getElementById("profTabBtnGeneral").className = defClass;
+            document.getElementById("profTabBtnSecurity").className = defClass;
+            document.getElementById("profTabBtnSessions").className = defClass;
+
+            if (tab === 'general') {
+                document.getElementById("profTabGeneral").classList.remove("hidden");
+                document.getElementById("profTabBtnGeneral").className = actClass;
+            } else if (tab === 'security') {
+                document.getElementById("profTabSecurity").classList.remove("hidden");
+                document.getElementById("profTabBtnSecurity").className = actClass;
+            } else if (tab === 'sessions') {
+                document.getElementById("profTabSessions").classList.remove("hidden");
+                document.getElementById("profTabBtnSessions").className = actClass;
+            }
+        }
+
+        async function handleUpdateProfile(e) {
+            e.preventDefault();
+            const newU = document.getElementById("profUsername").value.trim();
+            const disp = document.getElementById("profDisplayName").value.trim();
+            const em = document.getElementById("profEmail").value.trim();
+
+            const res = await authFetch('/api/user/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_username: newU, display_name: disp, email: em })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "Azonosító adatok sikeresen frissítve!");
+                await loadUserInfo();
+            } else {
+                alert(data.error || "Hiba a mentés során!");
+            }
+        }
+
+        async function handleChangeOwnPw(e) {
+            e.preventDefault();
+            const oldPw = document.getElementById("oldOwnPassword").value;
+            const newPw = document.getElementById("newOwnPassword").value;
+
+            const res = await authFetch('/api/user/save-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert("Jelszavad sikeresen megváltozott!");
+                document.getElementById("oldOwnPassword").value = "";
+                document.getElementById("newOwnPassword").value = "";
+                switchProfileTab('general');
+            } else {
+                alert(data.error || "Hiba!");
+            }
+        }
+
+        // ================= BEÁLLÍTÁSOK =================
+        function openSettingsModal() {
+            const prefSelect = document.getElementById("prefDefaultDb");
+            prefSelect.innerHTML = "";
+            userPermissions.databases.forEach(db => {
+                const opt = document.createElement("option");
+                opt.value = db;
+                opt.innerText = db.replace('_', ' ').toUpperCase();
+                if (db === userPermissions.preferred_db) opt.selected = true;
+                prefSelect.appendChild(opt);
+            });
+
+            if (userPermissions.is_superadmin) {
+                document.getElementById("superadminSettingsBlock").classList.remove("hidden");
+                const sysSelect = document.getElementById("sysDefaultDb");
+                sysSelect.innerHTML = "";
+                userPermissions.all_databases.forEach(db => {
+                    const opt = document.createElement("option");
+                    opt.value = db;
+                    opt.innerText = db.replace('_', ' ').toUpperCase();
+                    if (db === userPermissions.system_default_db) opt.selected = true;
+                    sysSelect.appendChild(opt);
+                });
+            } else {
+                document.getElementById("superadminSettingsBlock").classList.add("hidden");
+            }
+
+            const currentTheme = localStorage.getItem("rider_theme") || "dark";
+            setAppTheme(currentTheme, false);
+
+            document.getElementById("settingsModal").classList.remove("hidden");
+            document.getElementById("settingsModal").classList.add("flex");
+        }
+
+        function closeSettingsModal() {
+            document.getElementById("settingsModal").classList.add("hidden");
+            document.getElementById("settingsModal").classList.remove("flex");
+        }
+
+        async function handleSavePreferences(e) {
+            e.preventDefault();
+            const prefDb = document.getElementById("prefDefaultDb").value;
+            const sysDb = userPermissions.is_superadmin ? document.getElementById("sysDefaultDb").value : null;
+
+            const res = await authFetch('/api/user/save-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ preferred_db: prefDb, system_default_db: sysDb })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || "Munkatér beállítások elmentve!");
+                closeSettingsModal();
+                await loadUserInfo();
+            } else {
+                alert(data.error || "Hiba!");
+            }
+        }
+
+        // ================= DB ADMIN =================
+        async function openDbAdminModal() {
+            const res = await authFetch('/api/db-admin/requests');
+            const data = await res.json();
+            const container = document.getElementById("dbAdminRequestsContainer");
+            container.innerHTML = "";
+
+            if (!data.db_requests || data.db_requests.length === 0) {
+                container.innerHTML = `<p class="text-[11px] text-[var(--text-muted)] italic font-mono">Nincs elbírálásra váró kérelem a munkatereidhez.</p>`;
+            } else {
+                data.db_requests.forEach(r => {
+                    container.innerHTML += `
+                        <div class="flex items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs">
+                            <div><span class="font-medium text-[var(--text-primary)]">${esc(r.username)}</span> &rarr; <span class="text-[var(--text-secondary)] font-mono font-bold">${esc(r.database.toUpperCase())}</span></div>
+                            <div class="flex gap-1.5">
+                                <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'approve', true)" class="px-2 py-0.5 bg-[#238636] text-white rounded text-[11px]">Elfogad</button>
+                                <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'reject', true)" class="px-2 py-0.5 ui-panel text-rose-500 border border-[var(--border-light)] rounded text-[11px]">Elutasít</button>
+                            </div>
+                        </div>`;
+                });
+            }
+
+            document.getElementById("dbAdminModal").classList.remove("hidden");
+            document.getElementById("dbAdminModal").classList.add("flex");
+        }
+
+        function closeDbAdminModal() {
+            document.getElementById("dbAdminModal").classList.add("hidden");
+            document.getElementById("dbAdminModal").classList.remove("flex");
+        }
+
+        // ================= FŐADMIN KÖZPONT =================
+        async function openUserAdminModal() { 
+            await renderAdminData();
+            resetUserForm();
+            switchAdminTab('users');
+            document.getElementById("userAdminModal").classList.remove("hidden"); 
+            document.getElementById("userAdminModal").classList.add("flex"); 
+        }
+        function closeUserAdminModal() { 
+            document.getElementById("userAdminModal").classList.add("hidden"); 
+            document.getElementById("userAdminModal").classList.remove("flex"); 
+        }
+
+        function switchAdminTab(tab) {
+            document.getElementById("adminTabUsers").classList.add("hidden");
+            document.getElementById("adminTabRoles").classList.add("hidden");
+            document.getElementById("adminTabDbs").classList.add("hidden");
+            document.getElementById("adminTabRequests").classList.add("hidden");
+
+            const defClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--panel-hover)] flex items-center gap-2";
+            const actClass = "w-full text-left px-3 py-2 rounded text-[11px] font-semibold text-white bg-[#1f6feb] flex items-center gap-2";
+
+            document.getElementById("tabBtnAdminUsers").className = defClass;
+            document.getElementById("tabBtnAdminRoles").className = defClass;
+            document.getElementById("tabBtnAdminDbs").className = defClass;
+            document.getElementById("tabBtnAdminRequests").className = defClass;
+
+            if (tab === 'users') {
+                document.getElementById("adminTabUsers").classList.remove("hidden");
+                document.getElementById("tabBtnAdminUsers").className = actClass;
+            } else if (tab === 'roles') {
+                document.getElementById("adminTabRoles").classList.remove("hidden");
+                document.getElementById("tabBtnAdminRoles").className = actClass;
+            } else if (tab === 'dbs') {
+                document.getElementById("adminTabDbs").classList.remove("hidden");
+                document.getElementById("tabBtnAdminDbs").className = actClass;
+            } else if (tab === 'requests') {
+                document.getElementById("adminTabRequests").classList.remove("hidden");
+                document.getElementById("tabBtnAdminRequests").className = actClass;
+            }
+        }
+
+        async function renderAdminData() {
+            const res = await authFetch('/api/admin/users');
+            adminCacheData = await res.json();
+            const data = adminCacheData;
+
+            const roleSelect = document.getElementById("newRole");
+            roleSelect.innerHTML = "";
+            Object.keys(data.roles || {}).forEach(rKey => {
+                const r = data.roles[rKey];
+                const opt = document.createElement("option");
+                opt.value = rKey;
+                opt.innerText = `${r.name} (${rKey})`;
+                roleSelect.appendChild(opt);
+            });
+
+            const dbContainer = document.getElementById("dbListContainer");
+            dbContainer.innerHTML = "";
+            (data.all_databases || []).forEach(db => {
+                dbContainer.innerHTML += `
+                    <div class="flex items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs">
+                        <span class="font-mono text-[var(--text-primary)]"><i class="fa-solid fa-database mr-2 text-[var(--text-muted)]"></i>${esc(db.toUpperCase())}</span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="switchDatabase(${jsq(db)}); closeUserAdminModal();" class="text-xs text-[#1f6feb] hover:underline">Megnyitás</button>
+                            ${db !== 'default' ? `<button onclick="deleteDatabase(${jsq(db)})" class="text-[var(--text-muted)] hover:text-rose-500 ml-2"><i class="fa-solid fa-trash"></i></button>` : '<span class="text-[10px] text-[var(--text-muted)] italic ml-2">[Alapértelmezett]</span>'}
+                        </div>
+                    </div>`;
+            });
+
+            const pContainer = document.getElementById("pendingUsersContainer");
+            pContainer.innerHTML = "";
+            const pendingUsers = data.users.filter(u => u.status === 'pending');
+            if (pendingUsers.length === 0) {
+                document.getElementById("pendingUsersSection").classList.add("hidden");
+            } else {
+                document.getElementById("pendingUsersSection").classList.remove("hidden");
+                pendingUsers.forEach(u => {
+                    pContainer.innerHTML += `
+                        <div class="flex items-center justify-between p-2 ui-panel border border-amber-500/30 rounded text-xs">
+                            <div><span class="font-semibold text-[var(--text-primary)]">${esc(u.display_name || u.username)}</span> <span class="text-[10px] text-[var(--text-muted)] font-mono">(${esc(u.username)} &bull; ${esc(u.email || 'Nincs email')})</span></div>
+                            <div class="flex gap-1.5">
+                                <button onclick="approveUser(${jsq(u.username)}, 'approve')" class="px-2 py-0.5 bg-[#238636] text-white rounded text-[11px]">Elfogad</button>
+                                <button onclick="approveUser(${jsq(u.username)}, 'reject')" class="px-2 py-0.5 ui-panel text-rose-500 border border-[var(--border-light)] rounded text-[11px]">Elutasít</button>
+                            </div>
+                        </div>`;
+                });
+            }
+
+            const reqContainer = document.getElementById("dbRequestsContainer");
+            reqContainer.innerHTML = "";
+            if (data.db_requests.length === 0) {
+                reqContainer.innerHTML = `<p class="text-xs text-[var(--text-muted)] italic font-mono">Nincs csatlakozási kérelem.</p>`;
+            } else {
+                data.db_requests.forEach(r => {
+                    reqContainer.innerHTML += `
+                        <div class="flex items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs">
+                            <div><span class="font-medium text-[var(--text-primary)]">${esc(r.username)}</span> &rarr; <span class="text-[var(--text-secondary)] font-mono font-bold">${esc(r.database.toUpperCase())}</span></div>
+                            <div class="flex gap-1.5">
+                                <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'approve')" class="px-2 py-0.5 bg-[#238636] text-white rounded text-[11px]">Elfogad</button>
+                                <button onclick="approveDbRequest(${jsq(r.username)}, ${jsq(r.database)}, 'reject')" class="px-2 py-0.5 ui-panel text-rose-500 border border-[var(--border-light)] rounded text-[11px]">Elutasít</button>
+                            </div>
+                        </div>`;
+                });
+            }
+
+            const uContainer = document.getElementById("userListContainer");
+            uContainer.innerHTML = "";
+            data.users.filter(u => u.status !== 'pending').forEach(u => {
+                const roleObj = data.roles[u.role] || { name: u.role };
+                let roleBadge = `<span class="ui-subtle text-[var(--text-secondary)] border border-[var(--border-color)] px-1.5 py-0.5 rounded font-mono text-[10px] uppercase">${esc(roleObj.name)}</span>`;
+                if (u.is_superadmin) roleBadge = `<span class="bg-amber-500/10 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono text-[10px] uppercase font-bold">FŐADMIN</span>`;
+
+                uContainer.innerHTML += `
+                    <div class="flex flex-wrap items-center justify-between p-2 ui-panel border border-[var(--border-color)] rounded text-xs gap-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-user text-[var(--text-muted)]"></i>
+                            <div>
+                                <span class="font-medium text-[var(--text-primary)]">${esc(u.display_name || u.username)}</span>
+                                <span class="text-[10px] font-mono text-[var(--text-muted)]">(${esc(u.username)})</span>
+                                ${u.email ? `<span class="text-[10px] font-mono text-[var(--text-secondary)] ml-1">&lt;${esc(u.email)}&gt;</span>` : ''}
+                            </div>
+                            ${roleBadge}
+                        </div>
+                        <div class="text-[var(--text-secondary)] font-mono text-[11px]">Partíciók: <span class="text-[var(--text-primary)] font-semibold">${esc(u.databases.join(", ") || "Nincs")}</span></div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="editUser(${jsq(u.username)}, ${jsq(u.display_name || u.username)}, ${jsq(u.email || '')}, ${jsq(u.is_superadmin ? 'superadmin' : u.role)}, ${jsq(u.databases.join(","))})" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><i class="fa-solid fa-pen"></i></button>
+                            ${!u.is_superadmin ? `<button onclick="deleteUser(${jsq(u.username)})" class="text-[var(--text-muted)] hover:text-rose-500 ml-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                        </div>
+                    </div>`;
+            });
+
+            const rContainer = document.getElementById("rolesListContainer");
+            rContainer.innerHTML = "";
+            Object.keys(data.roles || {}).forEach(rKey => {
+                const r = data.roles[rKey];
+                rContainer.innerHTML += `
+                    <div class="p-2.5 ui-panel border border-[var(--border-color)] rounded text-xs flex justify-between items-center">
+                        <div>
+                            <span class="font-bold text-[var(--text-primary)]">${esc(r.name)}</span>
+                            <span class="font-mono text-[10px] text-amber-500 ml-1">(${esc(rKey)})</span>
+                            <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">${esc(r.description || '')}</p>
+                        </div>
+                    </div>`;
+            });
+
+            const dbSel = document.getElementById("newDbSelect");
+            dbSel.innerHTML = "";
+            (data.all_databases || []).forEach(db => {
+                const opt = document.createElement("option");
+                opt.value = db;
+                opt.innerText = db.replace("_", " ").toUpperCase();
+                opt.className = "py-1 px-2 hover:bg-[var(--panel-hover)] cursor-pointer";
+                dbSel.appendChild(opt);
+            });
+        }
+
+        async function approveUser(username, action) {
+            await authFetch('/api/admin/approve-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, action }) });
+            renderAdminData();
+        }
+
+        async function approveDbRequest(username, database, action, isFromDbAdmin = false) {
+            await authFetch('/api/admin/approve-db-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, database, action }) });
+            if (isFromDbAdmin) openDbAdminModal();
+            else renderAdminData();
+        }
+
+        async function handleCreateDb(e) {
+            e.preventDefault();
+            const name = document.getElementById("newDbNameInput").value;
+            const res = await authFetch('/api/admin/create-db', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db_name: name }) });
+            if (res.ok) {
+                document.getElementById("newDbNameInput").value = "";
+                alert(`Partíció (${name}) létrehozva!`);
+                await loadUserInfo();
+                renderAdminData();
+            }
+        }
+
+        async function deleteDatabase(dbName) {
+            if (confirm(`BIZTOSAN TÖRÖLNI KÍVÁNOD A(Z) [${dbName.toUpperCase()}] PARTÍCIÓT?`)) {
+                const res = await authFetch(`/api/admin/databases/${dbName}`, { method: 'DELETE' });
+                if (res.ok) {
+                    alert(`Partíció (${dbName}) törölve!`);
+                    await loadUserInfo();
+                    renderAdminData();
+                }
+            }
+        }
+
+        function editUser(uName, dispName, email, role, dbsStr) {
+            const uInput = document.getElementById("newUsername");
+            uInput.value = uName;
+            uInput.dataset.oldUsername = uName;
+            document.getElementById("newDisplayName").value = dispName;
+            document.getElementById("newUserEmail").value = email;
+            document.getElementById("newPassword").value = "";
+            document.getElementById("newRole").value = role;
+
+            const dbs = dbsStr ? dbsStr.split(',') : [];
+            const select = document.getElementById("newDbSelect");
+            Array.from(select.options).forEach(opt => opt.selected = dbs.includes(opt.value));
+            document.getElementById("userFormTitle").innerHTML = `Munkatárs Módosítása: <span class="font-mono text-[var(--text-primary)]">${esc(uName)}</span>`;
+            switchAdminTab('users');
+        }
+
+        function resetUserForm() {
+            const uInput = document.getElementById("newUsername");
+            uInput.value = "";
+            delete uInput.dataset.oldUsername;
+            document.getElementById("newDisplayName").value = "";
+            document.getElementById("newUserEmail").value = "";
+            document.getElementById("newPassword").value = "";
+            document.getElementById("newRole").value = "editor";
+            Array.from(document.getElementById("newDbSelect").options).forEach(opt => opt.selected = false);
+            document.getElementById("userFormTitle").innerHTML = `Munkatárs Rögzítése / Módosítása`;
+        }
+
+        async function handleSaveUser(e) {
+            e.preventDefault();
+            const uInput = document.getElementById("newUsername");
+            const u = uInput.value.trim();
+            const oldU = uInput.dataset.oldUsername || u;
+            const disp = document.getElementById("newDisplayName").value.trim();
+            const email = document.getElementById("newUserEmail").value.trim();
+            const p = document.getElementById("newPassword").value;
+            const r = document.getElementById("newRole").value;
+            const selectedDbs = Array.from(document.getElementById("newDbSelect").selectedOptions).map(opt => opt.value);
+
+            const res = await authFetch('/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_username: oldU, username: u, display_name: disp, email: email, password: p, role: r, databases: selectedDbs })
+            });
+
+            if (res.ok) {
+                await renderAdminData();
+                resetUserForm();
+                alert(`Munkatárs (${u}) adatai mentve!`);
+            } else {
+                const err = await res.json();
+                alert(err.error || "Hiba!");
+            }
+        }
+
+        async function deleteUser(uName) {
+            if (confirm(`Törlöd "${uName}" fiókját?`)) {
+                await authFetch(`/api/admin/users/${uName}`, { method: 'DELETE' });
+                renderAdminData();
+            }
+        }
+
+        function openRequestDbModal() {
+            const select = document.getElementById("availableDbSelect");
+            select.innerHTML = "";
+            userPermissions.all_databases.forEach(db => {
+                if (!userPermissions.databases.includes(db)) {
+                    const opt = document.createElement("option");
+                    opt.value = db;
+                    opt.innerText = db.replace('_', ' ').toUpperCase();
+                    select.appendChild(opt);
+                }
+            });
+            document.getElementById("requestDbModal").classList.remove("hidden");
+            document.getElementById("requestDbModal").classList.add("flex");
+        }
+        function closeRequestDbModal() { document.getElementById("requestDbModal").classList.add("hidden"); document.getElementById("requestDbModal").classList.remove("flex"); }
+
+        async function handleSendDbRequest(e) {
+            e.preventDefault();
+            const db = document.getElementById("availableDbSelect").value;
+            const res = await authFetch('/api/user/request-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ database: db })
+            });
+            if (res.ok) {
+                alert(`Kérelem elküldve: [${db.toUpperCase()}]!`);
+                closeRequestDbModal();
+            }
+        }
+
+        initTheme();
+        restoreSidebarState();
+        checkPasswordResetTokenInUrl();
+        checkAuth();
+    </script>
+</body>
+</html>
