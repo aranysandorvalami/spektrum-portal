@@ -74,7 +74,7 @@ function toggleAuthMode(mode) {
 }
 
 window.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    if ((e.ctrlKey || e.metaKey) && (e.key || "").toLowerCase() === "k") {
         e.preventDefault();
         document.getElementById("searchInput").focus();
     } else if (e.key === "Escape") {
@@ -85,7 +85,7 @@ window.addEventListener("keydown", (e) => {
         closeDbAdminModal();
         closeRequestDbModal();
         closeForgotPwModal();
-    } else if (e.key.toLowerCase() === "n" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+    } else if ((e.key || "").toLowerCase() === "n" &&!["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
         e.preventDefault();
         openAddModal();
     }

@@ -307,11 +307,18 @@ Deno.serve(async (req) => {
   const url = env("SUPABASE_URL");
 
   // A hívó jogosultságával olvasunk: csak a saját munkaterét látja (RLS)
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
   const userDb = createClient(url, env("SUPABASE_ANON_KEY"), {
-    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: { user } } = await userDb.auth.getUser();
-  if (!user) return json(401, { error: "Nincs bejelentkezve" });
+  // A tokent kifejezetten át kell adni: szerveroldalon nincs tárolt munkamenet
+  const { data: { user }, error: authError } = await userDb.auth.getUser(token);
+  if (!user) {
+    console.error("[task-notify] hitelesítés:", authError?.message);
+    return json(401, { error: "Nincs bejelentkezve (" + (authError?.message || "nincs token") + ")" });
+  }
 
   let body: { app?: string; workspace?: string; concert_id?: string; task_ids?: number[] };
   try { body = await req.json(); } catch { return json(400, { error: "Hibás kérés" }); }
