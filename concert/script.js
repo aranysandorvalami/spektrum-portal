@@ -359,7 +359,11 @@ async function notifyAssignees(concertId, taskIds) {
     const { error } = await window.SpektrumApi.sb.functions.invoke("task-notify", {
         body: { app: "concert", workspace: currentDb, concert_id: concertId, task_ids: taskIds }
     });
-    if (error) console.warn("Értesítő e-mail küldése sikertelen:", error.message);
+    if (!error) return;
+    let msg = error.message;
+    try { const b = await error.context.json(); if (b && b.error) msg = b.error; } catch (_) { /* nem JSON válasz */ }
+    console.warn("Értesítő e-mail küldése sikertelen:", msg);
+    alert("A koncert elmentve, de az értesítő e-mail nem ment ki.\n\n" + msg);
 }
 
 async function toggleTask(taskId, isDone) {

@@ -5,7 +5,7 @@
 //
 // Szükséges titkok (Dashboard → Edge Functions → Secrets):
 //   SMTP_HOST      pl. smtp.gmail.com
-//   SMTP_PORT      465 (SSL – a Supabase a 25-ös és 587-es portot tiltja)
+//   SMTP_PORT      465 (csak SSL – a Supabase a 25-ös és 587-es portot tiltja)
 //   SMTP_USER      pl. info@spektrumevents.hu
 //   SMTP_PASS      Google-nél alkalmazásjelszó
 //   MAIL_FROM      pl. Spektrum Managers <info@spektrumevents.hu>
@@ -15,7 +15,6 @@
 //   COMPANY_PHONE  céges telefonszám (alapból +36 20 618 4435)
 //   LOGO_URL       a Spektrum Events logó nyilvános címe (alapból PORTAL_URL + assets/spektrum-logo.png)
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -204,8 +203,96 @@ function renderTaskEmail(o) {
     (o.portalUrl ? `\n\nMegnyitás: ${o.portalUrl}concert/index.html?db=${encodeURIComponent(o.wsName)}&concert=${encodeURIComponent(c.id)}` : "") +
     `\n\n--\nSpektrum Events${o.company.email ? `\n${o.company.email}` : ""}${o.company.phone ? `\n${o.company.phone}` : ""}`;
 
-  // Egy sorba tömörítve: a denomailer a sortöréseket/behúzásokat hibásan kódolja („=20” jelenik meg a levélben)
-  return { subject, html: html.replace(/\s*\n\s*/g, " "), text };
+  return { subject, html, text };
+}
+
+// ===================================================================== SMTP KÜLDÉS (SSL, 465-ös port)
+// Saját, egyszerű küldő: a levél base64-ben, 76 karakteres sorokban megy, így nincs „=20” és túl hosszú sor.
+const utf8 = new TextEncoder();
+function b64(s: string) {
+  const bytes = utf8.encode(s);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+const b64Lines = (s: string) => b64(s).replace(/.{1,76}/g, "$&\r\n");
+const encHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64(s)}?=`);
+// "Név <cím>" → { name, address }
+function parseAddress(s: string) {
+  const m = s.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  return m ? { name: m[1].replace(/^"|"$/g, ""), address: m[2] } : { name: "", address: s.trim() };
+}
+
+type Smtp = { host: string; port: number; user: string; pass: string };
+type Mail = { from: string; to: string; bcc: string[]; subject: string; text: string; html: string };
+
+async function sendMail(cfg: Smtp, mail: Mail) {
+  const conn = await Deno.connectTls({ hostname: cfg.host, port: cfg.port });
+  const dec = new TextDecoder();
+  let buf = "";
+  // Egy teljes válasz beolvasása (többsoros: "250-..." sorok, majd "250 ...")
+  async function reply(expect: string) {
+    for (;;) {
+      const lines = buf.split("\r\n");
+      const end = lines.findIndex((l, i) => i < lines.length - 1 && /^\d{3} /.test(l));
+      if (end >= 0) {
+        const last = lines[end];
+        buf = lines.slice(end + 1).join("\r\n");
+        if (!last.startsWith(expect)) throw new Error(`SMTP hiba: ${lines.slice(0, end + 1).join(" | ")}`);
+        return last;
+      }
+      const chunk = new Uint8Array(4096);
+      const n = await conn.read(chunk);
+      if (n === null) throw new Error("SMTP: a szerver bontotta a kapcsolatot");
+      buf += dec.decode(chunk.subarray(0, n), { stream: true });
+    }
+  }
+  async function write(s: string) {
+    const data = utf8.encode(s);
+    for (let off = 0; off < data.length;) off += await conn.write(data.subarray(off));
+  }
+  async function cmd(line: string, expect: string) { await write(line + "\r\n"); return reply(expect); }
+
+  const from = parseAddress(mail.from);
+  const boundary = "spk_" + crypto.randomUUID().replace(/-/g, "");
+  const message = [
+    `From: ${from.name ? `${encHeader(from.name)} <${from.address}>` : from.address}`,
+    `To: ${mail.to}`,
+    `Subject: ${encHeader(mail.subject)}`,
+    `Date: ${new Date().toUTCString().replace("GMT", "+0000")}`,
+    `Message-ID: <${crypto.randomUUID()}@${from.address.split("@")[1] || "spektrum"}>`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64Lines(mail.text),
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64Lines(mail.html),
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+
+  try {
+    await reply("220");
+    await cmd("EHLO spektrum-managers", "250");
+    await cmd("AUTH LOGIN", "334");
+    await cmd(b64(cfg.user), "334");
+    await cmd(b64(cfg.pass), "235");
+    await cmd(`MAIL FROM:<${from.address}>`, "250");
+    for (const rcpt of [mail.to, ...mail.bcc]) await cmd(`RCPT TO:<${rcpt}>`, "25");
+    await cmd("DATA", "354");
+    await write(message + "\r\n.\r\n");   // base64 sor sosem kezdődik ponttal
+    await reply("250");
+    await cmd("QUIT", "221").catch(() => {});
+  } finally {
+    try { conn.close(); } catch { /* már zárva */ }
+  }
 }
 // ===================================================================== LEVÉLSABLON VÉGE
 
@@ -260,14 +347,11 @@ Deno.serve(async (req) => {
   };
   const todayIso = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Budapest" });
 
-  const smtp = new SMTPClient({
-    connection: {
-      hostname: env("SMTP_HOST"),
-      port: Number(env("SMTP_PORT") || 465),
-      tls: true,
-      auth: { username: env("SMTP_USER"), password: env("SMTP_PASS") },
-    },
-  });
+  const smtp: Smtp = {
+    host: env("SMTP_HOST"), port: Number(env("SMTP_PORT") || 465),
+    user: env("SMTP_USER"), pass: env("SMTP_PASS").replace(/\s+/g, ""),
+  };
+  if (!smtp.host || !smtp.user || !smtp.pass) return json(500, { error: "Hiányzó SMTP beállítás (Secrets)" });
 
   let sent = 0;
   try {
@@ -280,22 +364,18 @@ Deno.serve(async (req) => {
         tasks: tasks.filter((t) => t.assignee_id === p.id),
         portalUrl, company, todayIso,
       });
-      const bcc = superEmails.filter((e) => e !== p.email);
-      await smtp.send({
-        from: env("MAIL_FROM") || env("SMTP_USER"),
+      await sendMail(smtp, {
+        from: env("MAIL_FROM") || smtp.user,
         to: p.email,
-        ...(bcc.length ? { bcc } : {}),
-        subject: mail.subject,
-        content: mail.text,
-        html: mail.html,
+        bcc: superEmails.filter((e) => e !== p.email),
+        subject: mail.subject, text: mail.text, html: mail.html,
       });
       sent++;
     }
   } catch (e) {
     console.error("[task-notify]", e);
-    return json(500, { error: "Az e-mail küldése nem sikerült", sent });
-  } finally {
-    await smtp.close().catch(() => {});
+    return json(500, { error: "Az e-mail küldése nem sikerült: " + (e instanceof Error ? e.message : String(e)), sent });
   }
+  console.log(`[task-notify] elküldve: ${sent} levél`);
   return json(200, { sent });
 });
