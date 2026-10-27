@@ -306,22 +306,29 @@ Deno.serve(async (req) => {
   const env = (k: string) => Deno.env.get(k) ?? "";
   const url = env("SUPABASE_URL");
 
+  let body: { app?: string; workspace?: string; concert_id?: string; task_ids?: number[]; access_token?: string };
+  try { body = await req.json(); } catch { return json(400, { error: "Hibás kérés" }); }
+
+  // A felhasználó belépési tokenje (JWT): a fejlécből, vagy ha ott nincs/nem JWT, a kérésből
+  const isJwt = (t: string) => /^[\w-]+\.[\w-]+\.[\w-]+$/.test(t);
+  const headerToken = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const token = isJwt(headerToken) ? headerToken : (body.access_token ?? "");
+  if (!isJwt(token)) {
+    console.error("[task-notify] nincs érvényes token – fejléc:", headerToken ? (isJwt(headerToken) ? "JWT" : "nem JWT") : "üres",
+                  "| kérés:", body.access_token ? "nem JWT" : "üres");
+    return json(401, { error: "Nincs bejelentkezve (hiányzó token) – frissítsd az oldalt, vagy lépj be újra" });
+  }
+
   // A hívó jogosultságával olvasunk: csak a saját munkaterét látja (RLS)
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.replace(/^Bearer\s+/i, "");
   const userDb = createClient(url, env("SUPABASE_ANON_KEY"), {
-    global: { headers: { Authorization: authHeader } },
+    global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  // A tokent kifejezetten át kell adni: szerveroldalon nincs tárolt munkamenet
   const { data: { user }, error: authError } = await userDb.auth.getUser(token);
   if (!user) {
     console.error("[task-notify] hitelesítés:", authError?.message);
-    return json(401, { error: "Nincs bejelentkezve (" + (authError?.message || "nincs token") + ")" });
+    return json(401, { error: "Nincs bejelentkezve (" + (authError?.message || "érvénytelen token") + ")" });
   }
-
-  let body: { app?: string; workspace?: string; concert_id?: string; task_ids?: number[] };
-  try { body = await req.json(); } catch { return json(400, { error: "Hibás kérés" }); }
   if (body.app !== "concert" || !body.workspace || !body.concert_id || !Array.isArray(body.task_ids)) {
     return json(400, { error: "Hiányzó adatok" });
   }

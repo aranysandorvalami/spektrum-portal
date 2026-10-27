@@ -356,8 +356,13 @@ async function saveData() {
 // E-mail a feladat felelősének (a főadminok másolatot kapnak) – a szerveroldali task-notify függvény küldi
 async function notifyAssignees(concertId, taskIds) {
     if (!taskIds.length) return;
-    const { error } = await window.SpektrumApi.sb.functions.invoke("task-notify", {
-        body: { app: "concert", workspace: currentDb, concert_id: concertId, task_ids: taskIds }
+    // A belépési tokent kifejezetten küldjük (fejlécben és a kérésben is), hogy a függvény biztosan megkapja
+    const sb = window.SpektrumApi.sb;
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session ? session.access_token : "";
+    const { error } = await sb.functions.invoke("task-notify", {
+        headers: token ? { Authorization: "Bearer " + token } : {},
+        body: { app: "concert", workspace: currentDb, concert_id: concertId, task_ids: taskIds, access_token: token }
     });
     if (!error) return;
     let msg = error.message;
