@@ -3,5 +3,5 @@
 // SOHA ne tegyél ide "service_role" / "secret" kulcsot!
 window.SPEKTRUM_CONFIG = {
   supabaseUrl: "https://casnrnyniowcamjtctnv.supabase.co",
-  supabaseKey: "IDE_JON_A_PUBLISHABLE_KULCS"
+  supabaseKey: "sb_publishable_aQfhekeLZnrNEajyLxaqZQ_2jzL2a5J"
 };
