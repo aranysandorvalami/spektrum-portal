@@ -3,6 +3,8 @@ let userPermissions = { username: "", display_name: "", email: "", is_superadmin
 let appData = { title: "Turné 2026", subtitle: "Koncertmenedzsment", concerts: [] };
 let currentSessionId = localStorage.getItem("session_id") || "";
 let availableRoles = {};
+let assignableUsers = [];   // a munkatér lehetséges feladat-felelősei: [{ id, username, display_name }]
+let assignableError = "";
 
 function initTheme() {
     const savedTheme = localStorage.getItem("concert_theme") || "dark";
@@ -286,8 +288,23 @@ async function switchDatabase(dbName) {
     loadData();
 }
 
+async function loadAssignableUsers() {
+    const { data, error } = await window.SpektrumApi.sb.rpc("list_assignable_users", { p_app: "concert", p_ws_name: currentDb });
+    if (error) console.warn("Felelősök betöltése sikertelen:", error.message);
+    assignableError = !error ? ""
+        : /list_assignable_users/.test(error.message) ? "A felelős-lista még nincs beállítva az adatbázisban (supabase/add_task_assignees.sql)."
+        : "A felelős-lista nem tölthető be: " + error.message;
+    assignableUsers = data || [];
+}
+
+function assigneeName(id) {
+    const u = assignableUsers.find(x => x.id === id);
+    return u ? u.display_name : "";
+}
+
 async function loadData() {
     try {
+        loadAssignableUsers().then(render);
         const res = await authFetch(`/api/data?db=${currentDb}&_t=${Date.now()}`);
         appData = await res.json();
         if (!appData.concerts) appData.concerts = [];
@@ -299,15 +316,31 @@ async function loadData() {
 
 async function saveData() {
     try {
-        await authFetch(`/api/data?db=${currentDb}`, {
+        const res = await authFetch(`/api/data?db=${currentDb}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(appData, null, 2)
         });
         render();
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            alert(d.error || "Mentési hiba!");
+            return false;
+        }
+        return true;
     } catch (err) {
         alert("Mentési hiba!");
+        return false;
     }
+}
+
+// E-mail a feladat felelősének (a főadminok másolatot kapnak) – a szerveroldali task-notify függvény küldi
+async function notifyAssignees(concertId, taskIds) {
+    if (!taskIds.length) return;
+    const { error } = await window.SpektrumApi.sb.functions.invoke("task-notify", {
+        body: { app: "concert", workspace: currentDb, concert_id: concertId, task_ids: taskIds }
+    });
+    if (error) console.warn("Értesítő e-mail küldése sikertelen:", error.message);
 }
 
 async function toggleTask(taskId, isDone) {
@@ -369,12 +402,18 @@ function render() {
 
         let tasksHTML = '';
         if (Array.isArray(c.tasks) && c.tasks.length > 0) {
-            tasksHTML = c.tasks.map(t => `
-                <label class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded ui-subtle border border-[var(--border-color)] text-[10px] cursor-pointer hover:bg-[var(--panel-hover)]">
+            const today = new Date().toISOString().slice(0, 10);
+            tasksHTML = c.tasks.map(t => {
+                const overdue = t.due_date && !t.is_done && t.due_date < today;
+                const who = t.assignee_id ? assigneeName(t.assignee_id) : "";
+                return `
+                <label class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded ui-subtle border ${overdue ? 'border-rose-500/60' : 'border-[var(--border-color)]'} text-[10px] cursor-pointer hover:bg-[var(--panel-hover)]">
                     <input type="checkbox" onchange="toggleTask(${Number(t.id) || 0}, this.checked)" ${esc(t.is_done ? 'checked' : '')} class="rounded text-blue-600">
                     <span class="${esc(t.is_done ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-primary)] font-medium')}">${esc(t.text)}</span>
-                </label>
-            `).join('');
+                    ${t.due_date ? `<span class="font-mono ${overdue ? 'text-rose-500 font-bold' : 'text-[var(--text-muted)]'}" title="Határidő"><i class="fa-regular fa-calendar"></i> ${esc(t.due_date.slice(5).replace('-', '.'))}.</span>` : ''}
+                    ${who ? `<span class="text-sky-500" title="Felelős"><i class="fa-solid fa-user"></i> ${esc(who)}</span>` : ''}
+                </label>`;
+            }).join('');
         }
 
         rowsHTML += `
@@ -429,25 +468,43 @@ function render() {
     contentArea.appendChild(card);
 }
 
-function addTaskRow(text = "", isDone = false) {
+// task: { id, text, is_done, due_date, assignee_id }
+function addTaskRow(task = {}) {
     const container = document.getElementById("tasksContainer");
     const div = document.createElement("div");
-    div.className = "flex items-center gap-2 task-input-row";
+    div.className = "flex flex-wrap items-center gap-2 task-input-row";
+    div.dataset.id = task.id || "";
+    // A listában nem szereplő (pl. azóta kivett) felelős is maradjon kiválasztható
+    const users = assignableUsers.slice();
+    if (task.assignee_id && !users.some(u => u.id === task.assignee_id)) users.push({ id: task.assignee_id, display_name: "(nem tag)" });
     div.innerHTML = `
-        <input type="checkbox" ${esc(isDone ? 'checked' : '')} class="task-done rounded text-blue-600">
-        <input type="text" value="${esc(text)}" placeholder="pl. Rider és Stage Plan elküldve, szállás..." class="task-text form-control flex-1 rounded px-2 py-1">
-        <button type="button" onclick="this.closest('.task-input-row').remove()" class="text-[var(--text-muted)] hover:text-rose-500"><i class="fa-solid fa-xmark"></i></button>
+        <input type="checkbox" ${esc(task.is_done ? 'checked' : '')} class="task-done rounded text-blue-600">
+        <input type="text" value="${esc(task.text || '')}" placeholder="pl. Rider és Stage Plan elküldve, szállás..." class="task-text form-control flex-1 min-w-[180px] rounded px-2 py-1">
+        <input type="date" value="${esc(task.due_date || '')}" title="Határidő" class="task-due form-control w-[125px] rounded px-2 py-1 font-mono">
+        <select title="Felelős (e-mailt kap róla)" class="task-assignee form-control w-[150px] rounded px-2 py-1">
+            <option value="">– Felelős –</option>
+            ${users.map(u => `<option value="${esc(u.id)}" ${u.id === task.assignee_id ? 'selected' : ''}>${esc(u.display_name)}</option>`).join('')}
+        </select>
+        <button type="button" onclick="this.closest('.task-input-row').remove()" class="text-[var(--text-muted)] hover:text-rose-500" title="Feladat törlése"><i class="fa-solid fa-xmark"></i></button>
     `;
     container.appendChild(div);
 }
 
 function getTasksFromForm() {
-    const rows = document.querySelectorAll(".task-input-row");
+    // Stabil feladat-azonosítók: az új feladatok a turné eddigi legnagyobb azonosítója után kapnak számot
+    let maxId = 0;
+    appData.concerts.forEach(c => (c.tasks || []).forEach(t => { if (Number(t.id) > maxId) maxId = Number(t.id); }));
     const tasks = [];
-    rows.forEach(r => {
+    document.querySelectorAll(".task-input-row").forEach(r => {
         const text = r.querySelector(".task-text").value.trim();
-        const isDone = r.querySelector(".task-done").checked;
-        if (text) tasks.push({ text, is_done: isDone });
+        if (!text) return;
+        tasks.push({
+            id: Number(r.dataset.id) || ++maxId,
+            text,
+            is_done: r.querySelector(".task-done").checked,
+            due_date: r.querySelector(".task-due").value || "",
+            assignee_id: r.querySelector(".task-assignee").value || ""
+        });
     });
     return tasks;
 }
@@ -456,6 +513,9 @@ function openAddModal(id = null) {
     document.getElementById("concertForm").reset();
     document.getElementById("concertId").value = "";
     document.getElementById("tasksContainer").innerHTML = "";
+    const warn = document.getElementById("assigneeWarning");
+    warn.textContent = assignableError;
+    warn.classList.toggle("hidden", !assignableError);
 
     if (id) {
         const c = appData.concerts.find(item => item.id === id);
@@ -474,14 +534,14 @@ function openAddModal(id = null) {
             document.getElementById("cNotes").value = c.notes || '';
 
             if (Array.isArray(c.tasks)) {
-                c.tasks.forEach(t => addTaskRow(t.text, t.is_done));
+                c.tasks.forEach(t => addTaskRow(t));
             }
         }
     } else {
         document.getElementById("modalTitle").innerText = "Új Koncert Rögzítése";
-        addTaskRow("Technikai rider és stage plan elküldve", false);
-        addTaskRow("Szállás és utazás megszervezve", false);
-        addTaskRow("Plakát és promóciós anyagok jóváhagyva", false);
+        addTaskRow({ text: "Technikai rider és stage plan elküldve" });
+        addTaskRow({ text: "Szállás és utazás megszervezve" });
+        addTaskRow({ text: "Plakát és promóciós anyagok jóváhagyva" });
     }
 
     document.getElementById("concertModal").classList.remove("hidden");
@@ -510,6 +570,16 @@ async function saveConcert(e) {
         tasks: getTasksFromForm()
     };
 
+    // Értesítés: új felelős, vagy ugyanannál a felelősnél módosult határidő / szöveg
+    const old = id ? appData.concerts.find(item => item.id === id) : null;
+    const oldTasks = {};
+    ((old && old.tasks) || []).forEach(t => { oldTasks[t.id] = t; });
+    const toNotify = cData.tasks.filter(t => {
+        if (!t.assignee_id || t.is_done) return false;
+        const o = oldTasks[t.id];
+        return !o || o.assignee_id !== t.assignee_id || (o.due_date || "") !== t.due_date || o.text !== t.text;
+    }).map(t => t.id);
+
     if (id) {
         const idx = appData.concerts.findIndex(item => item.id === id);
         if (idx !== -1) appData.concerts[idx] = cData;
@@ -518,7 +588,7 @@ async function saveConcert(e) {
     }
 
     closeModal();
-    await saveData();
+    if (await saveData()) notifyAssignees(cData.id, toNotify);
 }
 
 async function deleteConcert(id) {

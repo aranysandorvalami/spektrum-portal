@@ -458,7 +458,28 @@ begin
 end;
 $$;
 
+-- Belépés felhasználónévvel: a felhasználónévhez tartozó e-mail cím (bejelentkezés előtt hívható)
+create or replace function public.login_email(p_login text)
+returns text language sql stable security definer set search_path = '' as $$
+  select email from public.profiles where lower(username) = lower(btrim(p_login)) limit 1;
+$$;
+
+-- Egy munkatér lehetséges feladat-felelősei: jóváhagyott tagok és főadminok (e-mail cím nélkül)
+create or replace function public.list_assignable_users(p_app text, p_ws_name text)
+returns table (id uuid, username text, display_name text)
+language sql stable security definer set search_path = '' as $$
+  select p.id, p.username, coalesce(nullif(p.display_name, ''), p.username)
+  from public.workspaces w
+  join public.profiles p on p.status = 'approved'
+   and (p.is_superadmin or exists (select 1 from public.workspace_members wm
+                                   where wm.workspace_id = w.id and wm.user_id = p.id))
+  where w.app = p_app and w.name = p_ws_name and public.is_ws_member(w.id)
+  order by 3;
+$$;
+
 revoke execute on all functions in schema public from public, anon;
+grant execute on function public.login_email(text) to anon, authenticated;
+grant execute on function public.list_assignable_users(text, text) to authenticated;
 grant execute on function public.is_approved(), public.is_superadmin(), public.app_role(text),
   public.has_perm(text, text), public.edit_perm_key(text), public.is_ws_member(uuid), public.can_edit_ws(uuid),
   public.manages_ws(uuid), public.can_see_profile(uuid), public.list_workspace_names(text), public.request_access(text, text),

@@ -20,8 +20,18 @@
   });
   window.spektrumSb = sb;
 
-  const APP = window.SPEKTRUM_APP;            // pl. "concert" – csak az appokban van megadva
+  // pl. "concert" – csak az appokban van megadva (window.SPEKTRUM_APP vagy a script data-app attribútuma)
+  const APP = window.SPEKTRUM_APP || (document.currentScript && document.currentScript.dataset.app) || undefined;
   const PORTAL_URL = new URL(APP ? "../index.html" : "./index.html", location.href).href;
+
+  // Az appok régi saját belépőképernyője soha ne látsszon: a bejelentkezés a portálon történik.
+  // A felhasználói blokk (név, fiókbeállítások, kijelentkezés) is csak a portál főoldalán van.
+  if (APP) {
+    const st = document.createElement("style");
+    st.textContent = "#loginScreen,#profileModal,#mainSidebar div:has(> div > #userAvatarLetter){display:none!important}" +
+      "#mainSidebar div:has(> div > #userAvatarLetter) + div{margin-top:0!important;padding-top:0!important;border-top:0!important}";
+    document.head.appendChild(st);
+  }
 
   const DEFAULT_SUBTITLES = {
     concert: "Koncertmenedzsment",

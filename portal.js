@@ -39,7 +39,7 @@
 
     function translateAuthError(e) {
         const m = (e && e.message) || "";
-        if (/Invalid login credentials/i.test(m)) return "Hibás e-mail cím vagy jelszó.";
+        if (/Invalid login credentials/i.test(m)) return "Hibás belépési adat vagy jelszó.";
         if (/Email not confirmed/i.test(m)) return "Az e-mail címed még nincs megerősítve. Nézd meg a postafiókod (a spam mappát is).";
         if (/already registered/i.test(m)) return "Ezzel az e-mail címmel már van fiók. Jelentkezz be, vagy kérj új jelszót.";
         if (/Password should be/i.test(m)) return "A jelszó túl rövid vagy túl egyszerű (legalább 8 karakter).";
@@ -67,11 +67,19 @@
     // ---------------------------------------------------------------- belépés
     $("loginForm").addEventListener("submit", async (e) => {
         e.preventDefault();
-        const f = e.target; msg(f, ""); busy(f, true);
-        const { error } = await sb.auth.signInWithPassword({
-            email: $("loginEmail").value.trim(),
-            password: $("loginPassword").value
-        });
+        const f = e.target; msg(f, "");
+        const login = $("loginEmail").value.trim();
+        if (!login) return msg(f, "Add meg az e-mail címed vagy a felhasználóneved.");
+        busy(f, true);
+        // Felhasználónévvel is be lehet lépni: ilyenkor előbb kikeressük a hozzá tartozó e-mail címet
+        let email = login;
+        if (!login.includes("@")) {
+            const r = await sb.rpc("login_email", { p_login: login });
+            if (r.error) { busy(f, false); return msg(f, /login_email/.test(r.error.message) ? "A felhasználónévvel való belépés még nincs beállítva az adatbázisban (supabase/add_username_login.sql). Addig az e-mail címeddel lépj be." : translateAuthError(r.error)); }
+            if (!r.data) { busy(f, false); return msg(f, "Hibás felhasználónév vagy jelszó."); }
+            email = r.data;
+        }
+        const { error } = await sb.auth.signInWithPassword({ email, password: $("loginPassword").value });
         busy(f, false);
         if (error) return msg(f, translateAuthError(error));
         route();
